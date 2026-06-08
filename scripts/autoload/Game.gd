@@ -13,7 +13,9 @@ func _ready() -> void:
 	if SaveManager.has_save() and SaveManager.load_into(sim):
 		pass  # offline catch-up applied inside from_dict()
 	else:
-		sim.new_game()
+		sim.new_game(1337, [], SaveManager.load_reputation())
+	# Persist earned Reputation to the meta layer (survives New Game+).
+	sim.reputation_earned.connect(func(total): SaveManager.save_reputation(total))
 	# Persist on quit / app backgrounding.
 	get_tree().set_auto_accept_quit(false)
 
@@ -35,6 +37,12 @@ func _notification(what: int) -> void:
 
 ## Start a brand-new run, discarding the current save. Resets the EXISTING WorldSim
 ## in place so HUD/IslandView signal connections (bound to this instance) stay valid.
+## Permanent Reputation carries over from the meta layer.
 func restart() -> void:
 	SaveManager.clear()
-	sim.reset()
+	sim.reset(1337, [], SaveManager.load_reputation())
+
+## Prestige New Game+: restart with the chosen Custodians active. Reputation persists.
+func restart_with_custodians(custodians: Array) -> void:
+	SaveManager.clear()
+	sim.reset(1337, custodians, SaveManager.load_reputation())

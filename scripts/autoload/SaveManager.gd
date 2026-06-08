@@ -5,6 +5,7 @@ extends RefCounted
 ## Offline catch-up is applied inside Sim.from_dict() using the saved timestamp.
 
 const SAVE_PATH := "user://pioneer_isles_save.json"
+const META_PATH := "user://pioneer_isles_meta.json"  ## prestige meta, survives New Game+
 const SAVE_VERSION := 1
 
 static func save(sim: WorldSim) -> bool:
@@ -44,3 +45,23 @@ static func clear() -> void:
 		var dir := DirAccess.open("user://")
 		if dir != null:
 			dir.remove(SAVE_PATH.get_file())
+
+# ── prestige meta (Reputation total; persists across runs / New Game+) ───────────
+
+static func load_reputation() -> int:
+	if not FileAccess.file_exists(META_PATH):
+		return 0
+	var f := FileAccess.open(META_PATH, FileAccess.READ)
+	if f == null:
+		return 0
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if parsed is Dictionary:
+		return int(parsed.get("reputation", 0))
+	return 0
+
+static func save_reputation(total: int) -> void:
+	var f := FileAccess.open(META_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify({"reputation": total}))
+		f.close()

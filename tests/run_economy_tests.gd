@@ -45,6 +45,11 @@ func _initialize() -> void:
 	_test_handover_favor()
 	_test_trade_route()
 	_test_world_save_roundtrip()
+	_test_palace_gating()
+	_test_palace_completion_grants_reputation()
+	_test_custodian_starts_and_mods()
+	_test_custodians_gated_by_reputation()
+	_test_new_game_plus_keeps_reputation()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -604,3 +609,64 @@ func _test_world_save_roundtrip() -> void:
 	_check(sim2.unlocked_regions.has("tropical"), "unlocked regions persist")
 	_check(sim2.discoveries.size() == 1, "in-flight discovery persists")
 	_check(sim2.trade_routes.size() == 1, "trade routes persist")
+
+# ── prestige: Palace · Reputation · Custodians (M10) ─────────────────────────────
+
+func _test_palace_gating() -> void:
+	var isl := _grid_island(20, 20)
+	var sim := _sim_with(isl)
+	_place(isl, "kontor", Vector2i(1, 1))
+	sim.currencies["coin"] = 5000.0
+	isl.stockpile = {"plank": 500.0, "tools": 500.0}
+	var palace := Database.building("palace")
+	var r1 := sim.try_place(palace, Vector2i(6, 6))
+	_check(not r1.ok and "Paragon" in r1.reason, "Palace needs 30 Paragons to found")
+	var ph := _place(isl, "paragon_residence", Vector2i(10, 10))
+	ph.tier_id = "paragons"
+	ph.residents = 30
+	var r2 := sim.try_place(palace, Vector2i(6, 6))
+	_check(r2.ok, "Palace foundable with 30 Paragons + materials")
+
+func _test_palace_completion_grants_reputation() -> void:
+	var isl := _grid_island(20, 20)
+	var sim := _sim_with(isl)
+	var pb := isl.place(Database.building("palace"), Vector2i(6, 6))
+	sim.currencies["favor"] = 100000.0
+	var earned := [0]
+	sim.reputation_earned.connect(func(total): earned[0] = total)
+	for i in 5:
+		sim.upgrade_palace(pb)
+	_check(pb.level == 5, "Palace reaches the final stage")
+	_check(sim.reputation() == 1, "completing the Palace grants +1 Reputation")
+	_check(earned[0] == 1, "reputation_earned signal fires on completion")
+	_check(not sim.can_upgrade_palace(pb), "a completed Palace can't upgrade further")
+
+func _test_custodian_starts_and_mods() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1, ["cartographer", "treasurer", "scientist"], 0)
+	_check(is_equal_approx(sim.currencies.cartography, 30.0), "Cartographer: start with 30 Cartography")
+	_check(sim.currencies.coin >= 10000.0, "Treasurer: start with a full treasury")
+	_check(is_equal_approx(sim.creativity, 200.0), "Scientist: start with 200 Creativity")
+	var sim2 := WorldSim.new()
+	sim2.new_game(1, ["bannerman"], 0)
+	_check(sim2.army_cap() == 150, "Bannerman custodian: +50 army cap")
+	var sim3 := WorldSim.new()
+	sim3.new_game(1, ["minion"], 0)
+	_check(sim3.island_limit() == WorldSim.ISLAND_LIMIT_BASE + 2, "Minion custodian: +2 island slots")
+
+func _test_custodians_gated_by_reputation() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1, [], 4)  # 4 permanent Reputation
+	var avail := sim.available_custodians()
+	_check("treasurer" in avail, "Rep-4 Custodian available at 4 Reputation")
+	_check(not ("berserk" in avail), "Rep-8 Custodian still locked at 4 Reputation")
+	_check("cartographer" in avail, "Rep-1 Custodian available")
+
+func _test_new_game_plus_keeps_reputation() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1, [], 3)  # carried-over Reputation
+	_check(sim.reputation() == 3, "New Game+ keeps permanent Reputation")
+	sim.reset(1, ["cartographer"], sim.reputation())
+	_check(sim.reputation() == 3, "reset preserves Reputation")
+	_check(sim.active_custodians.has("cartographer"), "reset applies chosen Custodians")
+	_check(is_equal_approx(sim.currencies.cartography, 30.0), "Custodian start grant applied on reset")

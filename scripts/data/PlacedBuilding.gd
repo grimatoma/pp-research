@@ -12,6 +12,7 @@ var connected: bool = false    ## within range of a storage building?
 var active: bool = false       ## produced/consumed on the most recent tick (for UI)
 var unmet_time: float = 0.0    ## seconds basics have gone unmet (drives emigration)
 var satisfied_time: float = 0.0 ## seconds all needs met at max residents (drives upgrade)
+var level: int = 0             ## upgrade stage (the Palace: 0 = Foundation … 5 = complete)
 
 func _init(p_building_id := "", p_origin := Vector2i.ZERO) -> void:
 	building_id = p_building_id
@@ -28,6 +29,7 @@ func to_dict() -> Dictionary:
 		# (otherwise frequent autosaves would reset progress toward grow/emigrate).
 		"unmet_time": unmet_time,
 		"satisfied_time": satisfied_time,
+		"level": level,
 	}
 
 static func from_dict(d: Dictionary) -> PlacedBuilding:
@@ -40,4 +42,5 @@ static func from_dict(d: Dictionary) -> PlacedBuilding:
 	pb.tier_id = String(d.get("tier_id", ""))
 	pb.unmet_time = float(d.get("unmet_time", 0.0))
 	pb.satisfied_time = float(d.get("satisfied_time", 0.0))
+	pb.level = int(d.get("level", 0))
 	return pb

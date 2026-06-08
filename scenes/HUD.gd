@@ -19,6 +19,10 @@ var _deploy_camp: OrcCamp = null
 var _deploy_spins: Dictionary = {}  ## unit_id -> SpinBox
 var _world_panel: PanelContainer
 var _world_body: VBoxContainer
+var _prestige_panel: PanelContainer
+var _prestige_body: VBoxContainer
+var _rep_lbl: Label
+var _selected_custodians: Array = []  ## chosen for the next New Game+
 var _stock_box: VBoxContainer
 var _build_box: HBoxContainer
 var _inspector: PanelContainer
@@ -46,12 +50,14 @@ func _ready() -> void:
 	_build_research_panel()
 	_build_military_panel()
 	_build_world_panel()
+	_build_prestige_panel()
 	_build_toast()
 	Game.sim.economy_ticked.connect(func(_d): _request_refresh())
 	Game.sim.notify.connect(_on_notify)
 	Game.sim.expedition_resolved.connect(func(_i, _c, _w): _refresh_military())
 	Game.sim.expedition_launched.connect(func(_i, _c): _refresh_military())
 	Game.sim.world_changed.connect(func(): _refresh_world())
+	Game.sim.reputation_earned.connect(func(_t): _refresh_prestige())
 	Game.sim.tier_unlocked.connect(func(_t):
 		_rebuild_build_menu()
 		_refresh_research())
@@ -72,8 +78,8 @@ func bind_island(view: Node2D) -> void:
 func _chip(parent: HBoxContainer, prefix: String) -> Label:
 	var l := Label.new()
 	l.text = prefix
-	l.add_theme_font_size_override("font_size", 18)
-	l.custom_minimum_size = Vector2(120, 0)
+	l.add_theme_font_size_override("font_size", 16)
+	l.custom_minimum_size = Vector2(92, 0)
 	parent.add_child(l)
 	return l
 
@@ -92,6 +98,7 @@ func _build_top_bar() -> void:
 	_coin_lbl = _chip(row, "Coin")
 	_favor_lbl = _chip(row, "Favor")
 	_carto_lbl = _chip(row, "Carto")
+	_rep_lbl = _chip(row, "Rep")
 	_creativity_lbl = _chip(row, "Creativity")
 	_pop_lbl = _chip(row, "Pop")
 	_time_lbl = _chip(row, "Day")
@@ -101,25 +108,36 @@ func _build_top_bar() -> void:
 	var world_btn := Button.new()
 	world_btn.text = "World"
 	world_btn.pressed.connect(func():
-		_world_panel.visible = not _world_panel.visible
-		if _world_panel.visible:
-			_refresh_world())
+		var want := not _world_panel.visible
+		close_panels()
+		_world_panel.visible = want
+		if want: _refresh_world())
 	row.add_child(world_btn)
 	var military_btn := Button.new()
 	military_btn.text = "Military"
 	military_btn.pressed.connect(func():
-		_military_panel.visible = not _military_panel.visible
-		if _military_panel.visible:
-			_deploy_camp = null
-			_refresh_military())
+		var want := not _military_panel.visible
+		close_panels()
+		_military_panel.visible = want
+		_deploy_camp = null
+		if want: _refresh_military())
 	row.add_child(military_btn)
 	var research_btn := Button.new()
 	research_btn.text = "Research"
 	research_btn.pressed.connect(func():
-		_research_panel.visible = not _research_panel.visible
-		if _research_panel.visible:
-			_refresh_research())
+		var want := not _research_panel.visible
+		close_panels()
+		_research_panel.visible = want
+		if want: _refresh_research())
 	row.add_child(research_btn)
+	var prestige_btn := Button.new()
+	prestige_btn.text = "Prestige"
+	prestige_btn.pressed.connect(func():
+		var want := not _prestige_panel.visible
+		close_panels()
+		_prestige_panel.visible = want
+		if want: _refresh_prestige())
+	row.add_child(prestige_btn)
 	var restart := Button.new()
 	restart.text = "New Run"
 	restart.pressed.connect(func():
@@ -489,6 +507,8 @@ func close_panels() -> void:
 		_military_panel.visible = false
 	if _world_panel:
 		_world_panel.visible = false
+	if _prestige_panel:
+		_prestige_panel.visible = false
 
 func _on_camp_selected(camp: OrcCamp) -> void:
 	_military_panel.visible = true
@@ -863,6 +883,116 @@ func _update_disc_labels() -> void:
 		(e.label as Label).text = "⛵ Charting %s — %s remaining" % [
 			String(d.region).capitalize(), _fmt_time(remaining)]
 
+# ── prestige panel (Palace · Reputation · Custodians · New Game+) ─────────────────
+
+func _build_prestige_panel() -> void:
+	_prestige_panel = PanelContainer.new()
+	_prestige_panel.anchor_left = 0.5
+	_prestige_panel.anchor_right = 0.5
+	_prestige_panel.anchor_top = 0.0
+	_prestige_panel.offset_top = 56
+	_prestige_panel.offset_left = -240
+	_prestige_panel.offset_right = 240
+	_prestige_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_prestige_panel.add_theme_stylebox_override("panel", _bg(Color(0.12, 0.10, 0.14, 0.98)))
+	_prestige_panel.visible = false
+	add_child(_prestige_panel)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(480, 480)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_prestige_body = VBoxContainer.new()
+	_prestige_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_prestige_body)
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 10)
+	m.add_child(scroll)
+	_prestige_panel.add_child(m)
+
+func open_prestige() -> void:
+	_prestige_panel.visible = true
+	_refresh_prestige()
+
+func _refresh_prestige() -> void:
+	if _prestige_panel == null or not _prestige_panel.visible:
+		return
+	for c in _prestige_body.get_children():
+		c.queue_free()
+	var sim := Game.sim
+	_add_label(_prestige_body, "Prestige — Reputation %d" % sim.reputation(), 16)
+	_add_label(_prestige_body, "Soft win: grow ~%d Paragons, build a Palace, complete its 5 stages with Favor → +1 permanent Reputation."
+		% WorldSim.PALACE_PARAGON_REQ, 11, Color(0.75, 0.78, 0.86))
+
+	# Palace status.
+	_prestige_body.add_child(HSeparator.new())
+	var palace := sim.find_palace()
+	if palace == null:
+		_add_label(_prestige_body, "No Palace yet", 14, Color("e0c89a"))
+		_add_label(_prestige_body, "Found one from the Services build menu (needs %d Paragons; you have %d)."
+			% [WorldSim.PALACE_PARAGON_REQ, sim.paragon_population()], 11, Color(0.7, 0.72, 0.78))
+	else:
+		_add_label(_prestige_body, "Palace — stage %d / %d" % [palace.level, WorldSim.PALACE_MAX_STAGE], 14)
+		if palace.level >= WorldSim.PALACE_MAX_STAGE:
+			_add_label(_prestige_body, "✦ Complete! Pick Custodians below and start a new world.", 12,
+				Color("7bd88f"))
+		else:
+			var cost := sim.palace_stage_cost(palace.level)
+			var up := Button.new()
+			up.text = "Raise to stage %d  (%d Favor)" % [palace.level + 1, int(cost)]
+			up.disabled = not sim.can_upgrade_palace(palace)
+			up.pressed.connect(func():
+				Game.sim.upgrade_palace(palace)
+				_refresh_prestige())
+			_prestige_body.add_child(up)
+
+	# Custodians.
+	_prestige_body.add_child(HSeparator.new())
+	_add_label(_prestige_body, "Custodians — run modifiers for your next world", 13,
+		Color(0.7, 0.78, 0.9))
+	_add_label(_prestige_body, "Reputation is never spent; a Custodian unlocks once you reach its tier. Selected ones apply to a New Game+.",
+		10, Color(0.6, 0.65, 0.72))
+	for cid in Database.all_custodians():
+		_prestige_body.add_child(_make_custodian_row(cid))
+
+	# New Game+.
+	_prestige_body.add_child(HSeparator.new())
+	var ngp := Button.new()
+	var sel := _selected_custodians.size()
+	ngp.text = "Start New Game+  (%d custodian%s)" % [sel, "" if sel == 1 else "s"]
+	ngp.pressed.connect(_start_new_game_plus)
+	_prestige_body.add_child(ngp)
+
+func _make_custodian_row(cid: String) -> Control:
+	var c := Database.custodian(cid)
+	var sim := Game.sim
+	var unlocked := sim.reputation() >= c.rep_cost
+	var cb := CheckBox.new()
+	cb.text = "%s  (Rep %d) — %s" % [c.display_name, c.rep_cost, c.description]
+	cb.disabled = not unlocked
+	cb.button_pressed = _selected_custodians.has(cid)
+	if not unlocked:
+		cb.modulate = Color(0.55, 0.55, 0.6)
+	cb.toggled.connect(func(on):
+		if on and not _selected_custodians.has(cid):
+			_selected_custodians.append(cid)
+		elif not on:
+			_selected_custodians.erase(cid))
+	return cb
+
+func _start_new_game_plus() -> void:
+	# Keep only custodians the player can still afford, then restart the world.
+	var keep: Array = []
+	for cid in _selected_custodians:
+		var c := Database.custodian(cid)
+		if c != null and Game.sim.reputation() >= c.rep_cost:
+			keep.append(cid)
+	Game.restart_with_custodians(keep)
+	_selected_custodians.clear()
+	_full_reset()
+	close_panels()
+	var msg := "New world!" if keep.is_empty() else "New world with %d custodian(s)!" % keep.size()
+	Game.sim.notify.emit(msg, "good")
+
 # ── toast / refresh / helpers ───────────────────────────────────────────────────
 
 func _build_toast() -> void:
@@ -905,6 +1035,7 @@ func _refresh() -> void:
 	_coin_lbl.text = "Coin %d" % int(Game.sim.coin())
 	_favor_lbl.text = "Favor %d" % int(Game.sim.currencies.get("favor", 0))
 	_carto_lbl.text = "Carto %d" % int(Game.sim.currencies.get("cartography", 0))
+	_rep_lbl.text = "Rep %d" % int(Game.sim.currencies.get("reputation", 0))
 	_creativity_lbl.text = "Creativity %d" % int(Game.sim.creativity)
 	_pop_lbl.text = "Pop %d" % Game.sim.total_population()
 	_time_lbl.text = "Day %d" % (int(Game.sim.elapsed / 120.0) + 1)
@@ -926,6 +1057,9 @@ func _refresh_build_affordability() -> void:
 func _full_reset() -> void:
 	if island_view and island_view.has_method("_rebake"):
 		island_view._rebake()
+	var main := get_parent()
+	if main and main.has_method("center_on_active_island"):
+		main.center_on_active_island()
 	_clear_active_build_btn()
 	_selected = null
 	_inspector.visible = false

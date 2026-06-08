@@ -93,6 +93,18 @@ func _run_capture() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://docs/world.png")
 	print("CAPTURE_WORLD_OK")
+	# Fifth shot: the Prestige panel — a completed Palace + custodians.
+	_hud.call("close_panels")
+	var isl2 := Game.sim.active_island()
+	var palace_pb := isl2.place(Database.building("palace"), _find_spot(Database.building("palace")))
+	palace_pb.level = 3
+	Game.sim.currencies["reputation"] = 4.0
+	Game.sim.currencies["favor"] = 5000.0
+	_hud.call("open_prestige")
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/prestige.png")
+	print("CAPTURE_PRESTIGE_OK")
 	get_tree().quit()
 
 func _frame_whole_island() -> void:

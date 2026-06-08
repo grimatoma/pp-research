@@ -23,6 +23,7 @@ signal notify(text: String, level: String)
 signal expedition_launched(island_index: int, camp_id: int)
 signal expedition_resolved(island_index: int, camp_id: int, won: bool)
 signal world_changed()  ## islands discovered / settled / handed over (macro map dirty)
+signal reputation_earned(total: int)  ## a Palace completed → +1 permanent Reputation
 
 const CREATIVITY_PER_POP_PER_MIN := 0.5  ## CHOSEN DEFAULT (per-resident Creativity rate)
 const MAX_STEP := 0.5           ## seconds per integration sub-tick (fixed quantum)
@@ -36,6 +37,10 @@ const ISLAND_LIMIT_BASE := 3            ## settled islands (raised by Better Rel
 const DISCOVERY_TRAVEL_BASE := 120.0    ## CHOSEN DEFAULT base discovery travel time (s)
 const DISCOVERY_SEC_PER_POINT := 600.0  ## spec: +10 min per Cartography point spent
 const DISCOVERY_CAP := 2.5 * 24.0 * 3600.0  ## spec: discovery total caps at 2.5 days
+const PALACE_PARAGON_REQ := 30      ## CHOSEN DEFAULT (scaled from spec's 500 Paragons)
+const PALACE_MAX_STAGE := 5         ## Foundation (0) + 5 Favor-fuelled stages
+## Favor to upgrade the Palace from stage i to i+1 (scaled from spec 1875/3750/7500/15000).
+const PALACE_STAGE_FAVOR := [200.0, 400.0, 800.0, 1600.0, 3200.0]
 
 var islands: Array[Island] = []
 var active_index: int = 0
@@ -48,6 +53,7 @@ var unlocked_regions: Array = ["temperate"]  ## climate regions reachable (resea
 var discoveries: Array = []     ## in-flight island-discovery voyages
 var trade_routes: Array = []    ## continuous inter-island good transfers (ships)
 var expeditions: Array = []     ## in-flight battles (resolve over wall-clock time)
+var active_custodians: Array = []  ## prestige run-modifiers chosen at New Game+
 var _exp_seq: int = 0           ## monotonic expedition counter → deterministic seeds
 var _disc_seq: int = 0          ## monotonic discovery counter → deterministic island seeds
 var _mods: Dictionary = {}      ## derived economy modifiers from `researched`
@@ -62,10 +68,14 @@ func active_island() -> Island:
 	return islands[active_index]
 
 ## Fresh run: one generated temperate island with a coastal Kontor and a small
-## starting stockpile so the player can build immediately.
-func new_game(seed_value := 1337) -> void:
+## starting stockpile so the player can build immediately. `custodians` are the
+## prestige run-modifiers chosen at New Game+; `start_reputation` carries the
+## permanent Reputation total over from the meta layer.
+func new_game(seed_value := 1337, custodians: Array = [], start_reputation := 0) -> void:
 	islands.clear()
-	currencies = {"coin": 200.0, "cartography": 0.0, "favor": 0.0, "reputation": 0.0}
+	active_custodians = custodians.duplicate()
+	currencies = {"coin": 200.0, "cartography": 0.0, "favor": 0.0,
+		"reputation": float(start_reputation)}
 	unlocked_tiers = ["pioneers"]
 	unlocked_regions = ["temperate"]
 	creativity = 0.0
@@ -76,6 +86,7 @@ func new_game(seed_value := 1337) -> void:
 	_exp_seq = 0
 	_disc_seq = 0
 	_recompute_mods()
+	_apply_custodian_starts()
 	elapsed = 0.0
 	_tick_accum = 0.0
 	# The home island carries two forts — a weak camp (first conquest) and the
@@ -92,8 +103,8 @@ func new_game(seed_value := 1337) -> void:
 
 ## Restart in place on THIS instance — keeps HUD/IslandView signal connections valid
 ## (they bound to this object in their _ready). See Game.restart().
-func reset(seed_value := 1337) -> void:
-	new_game(seed_value)
+func reset(seed_value := 1337, custodians: Array = [], start_reputation := 0) -> void:
+	new_game(seed_value, custodians, start_reputation)
 
 func _place_starting_kontor(isl: Island) -> void:
 	var def := Database.building("kontor")
@@ -357,6 +368,11 @@ func try_place(def: BuildingDef, origin: Vector2i) -> Dictionary:
 	var check := isl.can_place(def, origin)
 	if not check.ok:
 		return check
+	if def.is_palace:
+		if find_palace() != null:
+			return {"ok": false, "reason": "You already have a Palace"}
+		if paragon_population() < PALACE_PARAGON_REQ:
+			return {"ok": false, "reason": "Need %d Paragons to found a Palace" % PALACE_PARAGON_REQ}
 	if not can_afford(def):
 		return {"ok": false, "reason": "Not enough materials"}
 	for good_id in effective_cost(def):
@@ -446,6 +462,8 @@ func send_expedition(island_index: int, camp_id: int, army: Dictionary) -> Dicti
 	_exp_seq += 1
 	var duration := Battle.duration_seconds(army, camp.full_army())
 	duration = maxf(duration - float(_mods.get("battle_time_cut", 0.0)), 5.0)
+	if float(_mods.get("battle_instant", 0.0)) > 0.0:
+		duration = 0.1  # Berserk custodian: battles finish instantly
 	expeditions.append({
 		"island_index": island_index,
 		"camp_id": camp_id,
@@ -700,9 +718,83 @@ func _advance_trade(dt: float) -> void:
 			continue
 		var src := islands[fi]
 		var dst := islands[ti]
-		var want: float = float(r.rate) / 3600.0 * dt  ## goods/hour → per-second
+		var tmult := float(_mods.get("trade_mult", 1.0)) if not _mods.is_empty() else 1.0
+		var want: float = float(r.rate) * tmult / 3600.0 * dt  ## goods/hour → per-second
 		var moved := src.take(String(r.good), want)
 		dst.add(String(r.good), moved)
+
+# ── prestige: Custodian starts · the Palace · Reputation (M10) ───────────────────
+
+## Apply one-time starting grants from the active Custodians (called at new_game).
+func _apply_custodian_starts() -> void:
+	for cid in active_custodians:
+		var c := Database.custodian(cid)
+		if c == null:
+			continue
+		match String(c.effect.get("type", "")):
+			"start_cartography":
+				currencies["cartography"] = float(currencies.get("cartography", 0.0)) + float(c.effect.value)
+			"start_creativity":
+				creativity += float(c.effect.value)
+			"start_coin":
+				currencies["coin"] = float(currencies.get("coin", 0.0)) + float(c.effect.value)
+
+func paragon_population() -> int:
+	var n := 0
+	for isl in islands:
+		for pb in isl.buildings:
+			if pb.tier_id == "paragons":
+				n += pb.residents
+	return n
+
+## The Palace placed in the world (there is at most one).
+func find_palace() -> PlacedBuilding:
+	for isl in islands:
+		for pb in isl.buildings:
+			var def := Database.building(pb.building_id)
+			if def != null and def.is_palace:
+				return pb
+	return null
+
+## Favor cost to raise the Palace from its current stage to the next ( -1 if maxed).
+func palace_stage_cost(level: int) -> float:
+	if level < 0 or level >= PALACE_STAGE_FAVOR.size():
+		return -1.0
+	return PALACE_STAGE_FAVOR[level]
+
+func can_upgrade_palace(pb: PlacedBuilding) -> bool:
+	var def := Database.building(pb.building_id)
+	if def == null or not def.is_palace or pb.level >= PALACE_MAX_STAGE:
+		return false
+	return float(currencies.get("favor", 0.0)) >= palace_stage_cost(pb.level)
+
+## Upgrade the Palace one stage, spending Favor. Completing the final stage grants a
+## permanent Reputation point (the roguelite soft-win).
+func upgrade_palace(pb: PlacedBuilding) -> bool:
+	if not can_upgrade_palace(pb):
+		return false
+	var cost := palace_stage_cost(pb.level)
+	currencies["favor"] = float(currencies.get("favor", 0.0)) - cost
+	pb.level += 1
+	if pb.level >= PALACE_MAX_STAGE:
+		currencies["reputation"] = float(currencies.get("reputation", 0.0)) + 1.0
+		notify.emit("The Palace is complete! +1 Reputation. Pick a Custodian for a new world.", "good")
+		reputation_earned.emit(int(currencies.reputation))
+	else:
+		notify.emit("Palace raised to stage %d / %d." % [pb.level, PALACE_MAX_STAGE], "good")
+	return true
+
+func reputation() -> int:
+	return int(currencies.get("reputation", 0.0))
+
+## Custodians the player can pick given their permanent Reputation total.
+func available_custodians() -> Array:
+	var out: Array = []
+	for cid in Database.all_custodians():
+		var c := Database.custodian(cid)
+		if c != null and reputation() >= c.rep_cost:
+			out.append(cid)
+	return out
 
 # ── aggregates for UI ──────────────────────────────────────────────────────────
 
@@ -731,13 +823,28 @@ func coin() -> float:
 func _recompute_mods() -> void:
 	_mods = {"tax_mult": 1.0, "creativity_mult": 1.0, "prod_mult_all": 1.0,
 		"prod_mult": {}, "build_cost_flat": {}, "army_cap_bonus": 0.0,
-		"battle_time_cut": 0.0, "island_slots": 0.0, "discovery_speed": 1.0}
+		"battle_time_cut": 0.0, "island_slots": 0.0, "discovery_speed": 1.0,
+		"trade_mult": 1.0, "battle_instant": 0.0}
+	# Custodian effects are persistent run-modifiers (same effect grammar as perks).
+	for cid in active_custodians:
+		var c := Database.custodian(cid)
+		if c != null:
+			_apply_effect(c.effect)
 	for pid in researched:
 		var p := Database.research_perk(pid)
 		if p == null:
 			continue
-		var e: Dictionary = p.effect
+		_apply_effect(p.effect)
+
+## Fold one {type,value[,key]} effect into the derived modifier table.
+func _apply_effect(e: Dictionary) -> void:
 		match String(e.get("type", "")):
+			"trade_mult":
+				_mods.trade_mult += float(e.value)
+			"battle_instant":
+				_mods.battle_instant = 1.0
+			"start_cartography", "start_creativity", "start_coin":
+				pass  # one-time grants, applied in _apply_custodian_starts()
 			"tax_mult":
 				_mods.tax_mult += float(e.value)
 			"creativity_mult":
@@ -826,6 +933,7 @@ func to_dict() -> Dictionary:
 		"expeditions": expeditions.duplicate(true),
 		"discoveries": discoveries.duplicate(true),
 		"trade_routes": trade_routes.duplicate(true),
+		"active_custodians": active_custodians.duplicate(),
 		"exp_seq": _exp_seq,
 		"disc_seq": _disc_seq,
 		"saved_at_unix": Time.get_unix_time_from_system(),
@@ -848,6 +956,7 @@ func from_dict(d: Dictionary) -> void:
 	expeditions = d.get("expeditions", [])
 	discoveries = d.get("discoveries", [])
 	trade_routes = d.get("trade_routes", [])
+	active_custodians = d.get("active_custodians", [])
 	_exp_seq = int(d.get("exp_seq", 0))
 	_disc_seq = int(d.get("disc_seq", 0))
 	_recompute_mods()

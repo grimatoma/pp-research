@@ -21,6 +21,8 @@ static var research_order: Array[String] = [] ## perk ids, catalog order
 static var units: Dictionary = {}        ## id -> UnitDef
 static var ships: Dictionary = {}        ## id -> ShipDef
 static var ship_order: Array[String] = [] ## ship ids, roster order
+static var custodians: Dictionary = {}   ## id -> CustodianDef (prestige run-modifiers)
+static var custodian_order: Array[String] = []
 static var _built := false
 
 ## Build the catalog as soon as the class is loaded, so even direct reads of the
@@ -38,6 +40,7 @@ static func _ensure() -> void:
 	_build_research()
 	_build_units()
 	_build_ships()
+	_build_custodians()
 	_assert_cascade()
 	_assert_need_goods_exist()
 
@@ -90,6 +93,14 @@ static func ship(id: String) -> ShipDef:
 static func all_ships() -> Array:
 	_ensure()
 	return ship_order
+
+static func custodian(id: String) -> CustodianDef:
+	_ensure()
+	return custodians.get(id, null)
+
+static func all_custodians() -> Array:
+	_ensure()
+	return custodian_order
 
 ## The warchief boss that guards an island of the given size (12→34, step 2).
 static func warchief_for_size(size: int) -> String:
@@ -412,6 +423,39 @@ static func _build_ships() -> void:
 	_s("barque", "Barque", "tropical", 60.0, 100, false)
 	_s("skiff", "Skiff", "tropical", 80.0, 150, false)
 
+# ── custodians (prestige run-modifiers, gated by Reputation tier) ─────────────
+
+static func _c(id: String, name: String, rep: int, effect: Dictionary, desc: String) -> void:
+	custodians[id] = CustodianDef.new(id, name, rep, effect, desc)
+	custodian_order.append(id)
+
+static func _build_custodians() -> void:
+	# Rep 1
+	_c("cartographer", "Cartographer", 1, {"type": "start_cartography", "value": 30.0},
+		"Start each run with 30 Cartography.")
+	_c("scientist", "Scientist", 1, {"type": "start_creativity", "value": 200.0},
+		"Start with a 200-Creativity head start.")
+	_c("minion", "Minion", 1, {"type": "island_slots", "value": 2.0},
+		"Keep 2 more islands than your limit allows.")
+	_c("bannerman", "Bannerman", 1, {"type": "army_cap_bonus", "value": 50.0},
+		"Send +50 units in every expedition.")
+	# Rep 2
+	_c("merchant", "Merchant", 2, {"type": "trade_mult", "value": 1.0},
+		"Trade routes carry double the goods.")
+	# Rep 3
+	_c("inventor", "Inventor", 3, {"type": "creativity_mult", "value": 1.0},
+		"All Creativity generation is doubled.")
+	_c("navigator", "Navigator", 3, {"type": "discovery_speed", "value": -0.5},
+		"Island discoveries are twice as fast.")
+	# Rep 4
+	_c("treasurer", "Treasurer", 4, {"type": "start_coin", "value": 10000.0},
+		"Start with a stocked treasury (10,000 Coin).")
+	_c("general", "General", 4, {"type": "army_cap_bonus", "value": 100.0},
+		"Field a far larger army (+100 unit cap).")
+	# Rep 8
+	_c("berserk", "Berserk", 8, {"type": "battle_instant", "value": 1.0},
+		"All battles finish instantly.")
+
 # ── buildings & recipes ────────────────────────────────────────────────────────
 
 static func _bld(b: BuildingDef) -> void:
@@ -637,6 +681,14 @@ static func _build_buildings() -> void:
 	shipyard.cost = {"plank": 60, "coin": 150}
 	shipyard.sprite_path = "res://assets/art/buildings/shipyard.png"
 	_bld(shipyard)
+
+	# ── the Palace (prestige): Foundation + 5 Favor-fuelled stages → Reputation ─
+	var palace := _make("palace", "Palace", "civic", Color("e6d8b0"), Vector2i(3, 3))
+	palace.is_palace = true
+	palace.tier_unlock = "paragons"
+	palace.cost = {"coin": 2000, "plank": 300, "tools": 200}  # Foundation cost (scaled)
+	palace.sprite_path = "res://assets/art/buildings/palace.png"
+	_bld(palace)
 
 ## House factory. A house type appears in the build menu once its tier is reached;
 ## the first higher resident arrives by upgrading the tier below in place.
