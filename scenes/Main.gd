@@ -34,7 +34,6 @@ func _ready() -> void:
 		_run_capture.call_deferred()
 		return
 	# Onboarding hint on a fresh run (only the starting Kontor exists).
-	var isl := Game.sim.active_island()
 	if isl != null and isl.buildings.size() <= 1:
 		Game.sim.notify.emit(
 			"Welcome! Build a Fisherman's Hut and a Well near your Kontor, then Pioneer's Huts.",
