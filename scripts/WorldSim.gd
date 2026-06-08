@@ -265,9 +265,10 @@ func _phase_population(isl: Island, dt: float) -> void:
 			else:
 				currencies["favor"] += FAVOR_PER_PARAGON_PER_MIN / 60.0 \
 					* pb.residents * lux.ratio * dt
-			# Recruitment: a fed house musters Militia into the island garrison. Scales
-			# with luxury satisfaction so a thriving town raises troops fastest.
-			if basics.all_met:
+			# Recruitment: only the base population tier musters the base unit (spec:
+			# Pioneers→Militia; Farmers→Slingers when the rural chain exists). Higher
+			# tiers pay Coin instead, so a player keeps a Pioneer district for troops.
+			if basics.all_met and pb.tier_id == "pioneers":
 				isl.add("militia", pb.residents * (MILITIA_PER_POP_PER_MIN / 60.0)
 					* dt * maxf(lux.ratio, 0.25))
 

@@ -50,6 +50,7 @@ func _initialize() -> void:
 	_test_custodian_starts_and_mods()
 	_test_custodians_gated_by_reputation()
 	_test_new_game_plus_keeps_reputation()
+	_test_custodian_save_roundtrip()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -406,8 +407,19 @@ func _test_recruitment() -> void:
 	isl.stockpile = {"fish": 1e6, "water": 1e6}
 	sim.advance(300.0)
 	_check(isl.qty("militia") > 0.5,
-		"a satisfied house musters Militia (%.2f)" % isl.qty("militia"))
+		"a satisfied Pioneer house musters Militia (%.2f)" % isl.qty("militia"))
 	_check(sim.garrison(isl).get("militia", 0) >= 1, "garrison reports whole Militia units")
+	# Tier-gated: a higher-tier house pays Coin, it does NOT mint base units (spec).
+	var isl2 := _grid_island()
+	var sim2 := _sim_with(isl2)
+	_place(isl2, "kontor", Vector2i(1, 1))
+	var mansion := _place(isl2, "merchant_mansion", Vector2i(4, 4))
+	mansion.tier_id = "merchants"
+	mansion.residents = 15
+	isl2.stockpile = {"cauldron": 1e6, "beer": 1e6, "leather": 1e6, "coffee": 1e6,
+		"jam": 1e6, "water": 1e6, "community": 1e6, "education": 1e6, "medical_care": 1e6}
+	sim2.advance(300.0)
+	_check(isl2.qty("militia") < 0.01, "higher-tier houses do not muster Militia (tier-gated)")
 
 func _test_camp_generation_blocks_land() -> void:
 	var isl := MapGen.generate(32, 32, 1337)
@@ -670,3 +682,15 @@ func _test_new_game_plus_keeps_reputation() -> void:
 	_check(sim.reputation() == 3, "reset preserves Reputation")
 	_check(sim.active_custodians.has("cartographer"), "reset applies chosen Custodians")
 	_check(is_equal_approx(sim.currencies.cartography, 30.0), "Custodian start grant applied on reset")
+
+func _test_custodian_save_roundtrip() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1, ["cartographer", "inventor"], 2)
+	var sim2 := WorldSim.new()
+	sim2.from_dict(sim.to_dict())
+	_check(sim2.active_custodians.has("cartographer") and sim2.active_custodians.has("inventor"),
+		"active Custodians persist across save")
+	_check(sim2.reputation() == 2, "permanent Reputation persists across save")
+	# Custodian persistent mods reapply on load (Inventor → creativity ×2).
+	_check(is_equal_approx(float(sim2._mods.get("creativity_mult", 1.0)), 2.0),
+		"Custodian modifiers reapply on load")

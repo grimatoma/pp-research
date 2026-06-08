@@ -20,9 +20,10 @@ extends RefCounted
 ## Splash/Trample (overkill carries to the next target), Bulletproof (immune to ranged),
 ## Spiky (melee attacker takes 5 back), and the between-rounds boss effects Armageddon
 ## (5 to all both sides), Lightning Bolt (kill the highest-total-HP enemy type),
-## Revive (resurrect half the fallen each round), and Summon (spawn reinforcements,
-## scaled down from the spec's 100/400). Still unresolved (rare/defensive): Confusion,
-## Charge/Defender/Piercing, Stalwart/Shielded/Quicksilver, Explosive, Stabilization.
+## Revive (resurrect half the fallen each round), Summon (spawn reinforcements,
+## scaled down from the spec's 100/400), and Confusion (enemies may only Last-strike).
+## Still unresolved (rare/defensive, not on any current unit): Charge/Defender/Piercing,
+## Stalwart/Shielded/Quicksilver, Explosive, Stabilization.
 
 const PHASE_FIRST := 0
 const PHASE_NORMAL := 1
@@ -109,8 +110,11 @@ static func _resolve_phase(atk: Array, dfn: Array, phase: int, rng: RandomNumber
 	# Targeting uses the phase-start alive snapshot (simultaneity).
 	var dfn_alive := _alive(dfn)
 	var atk_alive := _alive(atk)
-	_strike(atk, dfn_alive, phase, rng)
-	_strike(dfn, atk_alive, phase, rng)
+	# Confusion: a side facing a living Confusion unit may only act in the Last phase.
+	var atk_confused := _side_has_alive_ability(dfn, "Confusion")
+	var dfn_confused := _side_has_alive_ability(atk, "Confusion")
+	_strike(atk, dfn_alive, phase, rng, atk_confused)
+	_strike(dfn, atk_alive, phase, rng, dfn_confused)
 	for u in atk:
 		if u.incoming > 0:
 			u.hp -= u.incoming
@@ -118,14 +122,17 @@ static func _resolve_phase(atk: Array, dfn: Array, phase: int, rng: RandomNumber
 		if u.incoming > 0:
 			u.hp -= u.incoming
 
-static func _strike(attackers: Array, enemy_alive: Array, phase: int, rng: RandomNumberGenerator) -> void:
+static func _strike(attackers: Array, enemy_alive: Array, phase: int,
+		rng: RandomNumberGenerator, confused := false) -> void:
 	if enemy_alive.is_empty():
 		return
 	var melee := enemy_alive.filter(func(u): return not u.def.is_ranged())
 	var pool: Array = melee if not melee.is_empty() else enemy_alive
 	var idx := 0
 	for a in attackers:
-		if a.hp <= 0 or not _acts_in_phase(a.def, phase):
+		# Confused units act only in the Last phase, ignoring their own strike timing.
+		var acts := (phase == PHASE_LAST) if confused else _acts_in_phase(a.def, phase)
+		if a.hp <= 0 or not acts:
 			continue
 		var dmg: int = a.def.atk
 		if rng.randf() < a.crit:
@@ -151,6 +158,7 @@ static func _assign_hit(attacker: Dictionary, target: Dictionary, dmg: int) -> v
 ## Distribute a Splash/Trample attacker's damage across the pool, carrying overkill.
 static func _splash_assign(attacker: Dictionary, dmg: int, pool: Array) -> void:
 	var remaining := dmg
+	var reflected := false  # Spiky reflects once per strike, not per splashed target
 	for t in pool:
 		if remaining <= 0:
 			break
@@ -158,8 +166,9 @@ static func _splash_assign(attacker: Dictionary, dmg: int, pool: Array) -> void:
 			continue
 		var take: int = min(remaining, t.def.hp)  # carry overkill past each target's HP
 		t.incoming += take
-		if t.def.has_ability("Spiky") and not attacker.def.is_ranged():
+		if t.def.has_ability("Spiky") and not attacker.def.is_ranged() and not reflected:
 			attacker.incoming += 5
+			reflected = true
 		remaining -= take
 
 # ── between-rounds boss abilities ───────────────────────────────────────────────
