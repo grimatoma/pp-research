@@ -1,0 +1,50 @@
+; Engine configuration file for "Pioneer Isles" — a Godot 4 clone of
+; Paragon Pioneers 2 (idle Anno-like settlement builder).
+; Spec: docs/SPEC.html (derived from the aiDev research doc).
+; Stored as plain text — diffable, hand-editable. Godot 4.6.
+
+config_version=5
+
+[application]
+
+config/name="Pioneer Isles"
+config/description="A Godot 4 clone of Paragon Pioneers 2 — idle island settlement builder with a luxury-cascade economy, range logistics, and production chains."
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+; The one autoload: owns the live WorldSim, ticks it, and saves/loads. The data
+; catalog (Database) and the sim core (WorldSim) are class_name statics/objects so
+; they are reachable headless in tests — they are NOT autoloads (per the spec).
+Game="*res://scripts/autoload/Game.gd"
+
+[display]
+
+; Desktop landscape builder. Logical 1280x720, expands to fill wider/taller windows.
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/size/resizable=true
+
+[rendering]
+
+; GL Compatibility — broadest desktop + web support; pixel-art friendly.
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+
+[input]
+
+place_cancel={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":2,"canceled":false,"pressed":true,"double_click":false,"script":null)
+]
+}
+rotate_cw={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}

@@ -1,0 +1,25 @@
+# Godot 4 ignores
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+
+# Mono/.NET (unused, GDScript project) — harmless guards
+.mono/
+data_*/
+mono_crash.*.json
+
+# Builds
+/build/
+/dist/
+*.exe
+*.pck
+*.zip
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+*~
+.vscode/
+.idea/
