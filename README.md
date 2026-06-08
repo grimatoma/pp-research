@@ -34,10 +34,17 @@ Playable temperate-region vertical slice:
 - **Idle / offline** — the sim is `advance(Δt)` with `advance(a)+advance(b) == advance(a+b)`,
   so closing the game and returning simulates the elapsed wall-clock.
 - **Save/load** — versioned JSON; offline catch-up applied on load.
+- **Creativity research (M9)** — population generates Creativity (decoupled from
+  luxuries, so it never stalls); spend it on a tree of perks that boost the economy
+  (production multipliers, Coin tax, build-cost reductions, +Creativity) plus a
+  repeatable Infinite tree. Perks gate by reached tier; full HUD panel.
+- **Auto-battle resolver (M8 core)** — deterministic 3-phase (First/Normal/Last)
+  simultaneous-strike combat: strike abilities, crits (seeded → reproducible),
+  ranged-targeted-after-melee, Flank, win-if-all-enemies-die, and the duration formula.
 
-Combat (auto-battle Orcs), ships/trade-routes, Cartography discovery, the Creativity
-research trees, and the Palace→Reputation→Custodian prestige loop are specced in the
-research doc and scaffolded for later milestones.
+Ships/trade-routes, Cartography discovery, the combat *expedition* flow (army en route +
+Orc camps on the map + recruitment), and the Palace→Reputation→Custodian prestige loop
+are specced in the research doc and queued for later milestones.
 
 ## Architecture
 
@@ -64,12 +71,15 @@ Open `project.godot` in **Godot 4.6+**, or:
 ```bash
 godot --path . --import                                  # first time: register classes
 godot --path .                                           # play
-godot --headless --path . --script res://tests/run_economy_tests.gd   # run tests (exit 0/1)
+godot --headless --path . --script res://tests/run_economy_tests.gd   # economy tests (exit 0/1)
+godot --headless --path . --script res://tests/run_combat_tests.gd    # combat tests (exit 0/1)
 ```
 
 ## Tests
 
-`tests/run_economy_tests.gd` — 28 headless checks: catalog integrity, the cascade
-invariant, production + input consumption, connectivity gating, growth/emigration, coin
-payout, the upgrade gate, save round-trip, offline-catch-up determinism, and deterministic
-mapgen.
+- `tests/run_economy_tests.gd` — 47 checks: catalog integrity, the cascade invariant,
+  production + input consumption, connectivity gating, growth/emigration, coin payout,
+  the upgrade gate, save round-trip, offline-catch-up determinism, deterministic mapgen,
+  Kontor placement, and the full Creativity research system.
+- `tests/run_combat_tests.gd` — 17 checks: golden determinism, win-on-mutual-death,
+  ranged protection, stronger-army-wins, and the duration formula.

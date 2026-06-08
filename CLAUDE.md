@@ -43,9 +43,14 @@ Because `Database` and `WorldSim` need no autoloads, `tests/run_economy_tests.gd
 ```bash
 godot --path . --import                                              # register class_names (first run / after new scripts)
 godot --path .                                                       # play
-godot --headless --path . --script res://tests/run_economy_tests.gd  # tests, exit 0/1
+godot --headless --path . --script res://tests/run_economy_tests.gd  # economy tests, exit 0/1
+godot --headless --path . --script res://tests/run_combat_tests.gd   # combat tests, exit 0/1
 godot --path . -- --capture                                          # windowed: build demo, screenshot → docs/screenshot.png
 ```
+
+**Run the `--script` test, not just `--import`, to catch compile errors** — `--import`
+registers `class_name`s but does not deep-compile method bodies, so type-inference errors
+inside functions only surface when a script is actually loaded by a test run.
 
 Godot 4.6 lives at `C:/Users/grima/Documents/VoidYield/Godot_v4.6.2-stable_win64_console.exe`
 on this machine (console build → stdout).
@@ -77,8 +82,10 @@ is missing, so the game always runs. Terrain uses the 16-tile Wang autotile shee
 ## Roadmap (per the research spec's milestones)
 
 Done: M1 sim core + grid · M2 range logistics · M3 population & cascade · M4 production
-chains · M5 coin economy. Scaffolded/next: M6 ships + trade routes + regions · M7
-Cartography discovery · M8 auto-battle Orcs · M9 Creativity research · M10
+chains · M5 coin economy · M9 Creativity research · M8 *core* (deterministic battle
+resolver + unit catalog in `scripts/systems/Battle.gd` + `Database._build_units`).
+Next: M8 expedition flow (army-over-time, Orc camps on the map, population→unit
+recruitment) · M6 ships + trade routes + regions · M7 Cartography discovery · M10
 Palace→Reputation→Custodian prestige. See `docs/pp2-spec-extract.json`.
 
 ## Engineering rules
