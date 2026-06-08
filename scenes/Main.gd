@@ -15,6 +15,9 @@ func _ready() -> void:
 	_island_view = (load("res://scenes/IslandView.gd") as GDScript).new()
 	add_child(_island_view)
 
+	# Ambient animated settlers walking the settlement (cosmetic).
+	add_child((load("res://scenes/SettlerLayer.gd") as GDScript).new())
+
 	_cam = Camera2D.new()
 	add_child(_cam)
 	_cam.make_current()
@@ -37,8 +40,8 @@ func _run_capture() -> void:
 	Game.sim.advance(400.0)
 	_island_view._rebake()
 	_frame_island()
-	for _i in 6:
-		await get_tree().process_frame
+	# Let ambient settlers spawn and walk a little before the shot.
+	await get_tree().create_timer(2.5).timeout
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	var path := "res://docs/screenshot.png"
@@ -70,6 +73,12 @@ func _build_demo_layout() -> void:
 	for pb in isl.buildings:
 		if Database.building(pb.building_id).is_house:
 			pb.residents = 6
+	Game.sim._recompute_connectivity(isl)
+	var conn := 0
+	for pb in isl.buildings:
+		if pb.connected:
+			conn += 1
+	print("DEMO_CONNECTIVITY ", conn, "/", isl.buildings.size(), " connected")
 
 func _find_spot(def: BuildingDef) -> Vector2i:
 	var isl := Game.sim.active_island()
@@ -91,9 +100,17 @@ func _find_spot(def: BuildingDef) -> Vector2i:
 
 func _frame_island() -> void:
 	var isl := Game.sim.active_island()
-	if isl != null:
-		_cam.position = Vector2(isl.width, isl.height) * TILE * 0.5
-		_cam.zoom = Vector2(0.62, 0.62)
+	if isl == null:
+		return
+	# Centre on the average of placed buildings so the settlement fills the shot.
+	var sum := Vector2.ZERO
+	var n := 0
+	for pb in isl.buildings:
+		var def := Database.building(pb.building_id)
+		sum += (Vector2(pb.origin) + Vector2(def.size) * 0.5) * TILE
+		n += 1
+	_cam.position = sum / n if n > 0 else Vector2(isl.width, isl.height) * TILE * 0.5
+	_cam.zoom = Vector2(1.05, 1.05)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:

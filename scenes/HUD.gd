@@ -283,19 +283,24 @@ func _refresh_inspector() -> void:
 		_add_label(_inspector_body, "⚠ No storage in range", 13, Color("e0593f"))
 	if def.is_house:
 		var t := Database.tier(pb.tier_id)
-		_add_label(_inspector_body, "%s — %d / %d residents"
-			% [t.display_name, pb.residents, t.max_residents], 14)
-		_add_label(_inspector_body, _needs_summary(t), 12, Color(0.8, 0.85, 0.9))
-		if Game.sim.can_upgrade(pb):
-			var up := Button.new()
-			up.text = "Ascend to " + Database.tier(Database.next_tier_id(pb.tier_id)).display_name
-			up.pressed.connect(func():
-				Game.sim.upgrade_house(pb)
-				_refresh_inspector())
-			_inspector_body.add_child(up)
-		elif Database.next_tier_id(pb.tier_id) != "":
-			_add_label(_inspector_body, "Fill all needs at max pop to ascend.", 11,
-				Color(0.6, 0.65, 0.72))
+		if t == null:
+			# House with unknown/empty tier (old or corrupt save) — don't crash; the
+			# Demolish button below still lets the player recover the tile.
+			_add_label(_inspector_body, "Unknown population tier", 13, Color("e0593f"))
+		else:
+			_add_label(_inspector_body, "%s — %d / %d residents"
+				% [t.display_name, pb.residents, t.max_residents], 14)
+			_add_label(_inspector_body, _needs_summary(t), 12, Color(0.8, 0.85, 0.9))
+			if Game.sim.can_upgrade(pb):
+				var up := Button.new()
+				up.text = "Ascend to " + Database.tier(Database.next_tier_id(pb.tier_id)).display_name
+				up.pressed.connect(func():
+					Game.sim.upgrade_house(pb)
+					_refresh_inspector())
+				_inspector_body.add_child(up)
+			elif Database.next_tier_id(pb.tier_id) != "":
+				_add_label(_inspector_body, "Fill all needs at max pop to ascend.", 11,
+					Color(0.6, 0.65, 0.72))
 	elif def.recipe != null and def.recipe.output != "":
 		var r := def.recipe
 		_add_label(_inspector_body, "Makes %s" % Database.good_name(r.output), 14)

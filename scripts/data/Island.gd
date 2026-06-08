@@ -102,9 +102,11 @@ func can_place(def: BuildingDef, origin: Vector2i) -> Dictionary:
 		if not borders:
 			return {"ok": false, "reason": "Must sit on a straight river spot"}
 	if def.needs_coast:
+		# "On the coast" = bordering the shoreline (ocean OR beach). Grass never
+		# touches deep water directly (a beach ring separates them), so accept either.
 		var coastal := false
 		for c in cells:
-			if _is_adjacent_to(c, T.WATER):
+			if _is_adjacent_to(c, T.WATER) or _is_adjacent_to(c, T.BEACH):
 				coastal = true
 				break
 		if not coastal:

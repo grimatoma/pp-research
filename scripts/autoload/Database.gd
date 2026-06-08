@@ -31,6 +31,7 @@ static func _ensure() -> void:
 	_build_tiers()
 	_build_buildings()
 	_assert_cascade()
+	_assert_need_goods_exist()
 
 # ── accessors ────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,15 @@ static func _build_goods() -> void:
 	_g("caviar", "Caviar", "luxury", Color("2c2c2c"))
 	_g("gold_jewelry", "Gold Jewelry", "luxury", Color("f2c94c"))
 	_g("perfume", "Perfume", "luxury", Color("e784c4"))
+	# Paragon luxuries (top-tier; producers are future end-game content — these are
+	# registered so the catalog/UI/asserts are consistent and Favor can pay out once
+	# their chains exist).
+	_g("shoe", "Shoe", "luxury", Color("8a5a30"))
+	_g("glasses", "Glasses", "luxury", Color("b0c4de"))
+	_g("book", "Book", "luxury", Color("6b4423"))
+	_g("chocolate_candy", "Chocolate Candy", "luxury", Color("5b3a29"))
+	_g("noble_garment", "Noble Garment", "luxury", Color("7d3c98"))
+	_g("wine", "Wine", "luxury", Color("722f37"))
 
 # ── population tiers (the luxury cascade) ──────────────────────────────────────
 
@@ -207,6 +217,16 @@ static func _assert_cascade() -> void:
 			assert(is_equal_approx(lux_rate, basic_rate),
 				"Cascade broken: %s lux %s != %s basic" % [prev.id, good_id, cur.id])
 
+## Every good referenced by ANY tier's needs must be a defined GoodDef — catches the
+## "top tier's luxuries never validated by the cascade loop" class of omission.
+static func _assert_need_goods_exist() -> void:
+	for tid in tier_order:
+		var t: PopTierDef = tiers[tid]
+		for d in [t.basic_needs, t.luxury_needs]:
+			for good_id in d:
+				assert(goods.has(good_id),
+					"Tier %s references undefined good '%s'" % [tid, good_id])
+
 # ── buildings & recipes ────────────────────────────────────────────────────────
 
 static func _bld(b: BuildingDef) -> void:
@@ -276,9 +296,11 @@ static func _build_buildings() -> void:
 		"pig", 1.0, 120.0, {}, "", "grass", {"wood": 10},
 		"res://assets/art/buildings/piggery.png"))
 	_bld(_producer("sheep_farm", "Sheep Farm", "raw", Color("d9c8a0"), Vector2i(2, 2),
-		"yarn", 1.0, 240.0, {}, "colonists", "grass", {"wood": 10}))
+		"yarn", 1.0, 240.0, {}, "colonists", "grass", {"wood": 10},
+		"res://assets/art/buildings/sheep_farm.png"))
 	_bld(_producer("cattle_ranch", "Cattle Ranch", "raw", Color("a07850"), Vector2i(2, 2),
-		"cattle", 1.0, 240.0, {}, "colonists", "grass", {"wood": 10}))
+		"cattle", 1.0, 240.0, {}, "colonists", "grass", {"wood": 10},
+		"res://assets/art/buildings/cattle_ranch.png"))
 
 	# ── mines (MOUNTAIN) ──────────────────────────────────────────────────────
 	_bld(_producer("coal_mine", "Coal Mine", "raw", Color("3a3a3a"), Vector2i(2, 2),
@@ -329,6 +351,10 @@ static func _build_buildings() -> void:
 		"beer", 2.0, 240.0, {"hops": 3, "malt": 1}, "townsmen", "", {"plank": 25}))
 	_bld(_producer("kiln", "Lime Kiln", "production", Color("b0a890"), Vector2i(2, 2),
 		"mortar", 1.0, 120.0, {"limestone": 1}, "colonists", "", {"wood": 20}))
+	# Clay Pit feeds the Brickworks (→ brick → Merchant's Mansion). Without it the
+	# whole urban progression would soft-lock at Townsmen.
+	_bld(_producer("clay_pit", "Clay Pit", "raw", Color("b5651d"), Vector2i(2, 2),
+		"clay", 1.0, 120.0, {}, "townsmen", "", {"wood": 20}))
 	_bld(_producer("brickworks", "Brickworks", "production", Color("b14a3a"), Vector2i(2, 2),
 		"brick", 1.0, 120.0, {"clay": 1}, "townsmen", "", {"wood": 20}))
 	_bld(_producer("iron_smelter", "Iron Smelter", "production", Color("9aa0a8"), Vector2i(2, 2),

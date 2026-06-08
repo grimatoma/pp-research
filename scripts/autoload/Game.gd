@@ -33,8 +33,8 @@ func _notification(what: int) -> void:
 		if what == NOTIFICATION_WM_CLOSE_REQUEST:
 			get_tree().quit()
 
-## Start a brand-new run, discarding the current save.
+## Start a brand-new run, discarding the current save. Resets the EXISTING WorldSim
+## in place so HUD/IslandView signal connections (bound to this instance) stay valid.
 func restart() -> void:
 	SaveManager.clear()
-	sim = WorldSim.new()
-	sim.new_game()
+	sim.reset()

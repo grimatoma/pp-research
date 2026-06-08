@@ -24,6 +24,10 @@ func to_dict() -> Dictionary:
 		"progress": progress,
 		"residents": residents,
 		"tier_id": tier_id,
+		# Persist the hysteresis timers so a save/load mid-cycle resumes faithfully
+		# (otherwise frequent autosaves would reset progress toward grow/emigrate).
+		"unmet_time": unmet_time,
+		"satisfied_time": satisfied_time,
 	}
 
 static func from_dict(d: Dictionary) -> PlacedBuilding:
@@ -34,4 +38,6 @@ static func from_dict(d: Dictionary) -> PlacedBuilding:
 	pb.progress = float(d.get("progress", 0.0))
 	pb.residents = int(d.get("residents", 0))
 	pb.tier_id = String(d.get("tier_id", ""))
+	pb.unmet_time = float(d.get("unmet_time", 0.0))
+	pb.satisfied_time = float(d.get("satisfied_time", 0.0))
 	return pb

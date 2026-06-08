@@ -20,7 +20,8 @@ signal needs_unmet(tier_id: String, missing_good: String)
 signal tier_unlocked(tier_id: String)
 signal notify(text: String, level: String)
 
-const MAX_STEP := 2.0           ## seconds per integration sub-tick
+const MAX_STEP := 0.5           ## seconds per integration sub-tick (fixed quantum)
+const MAX_CATCHUP_ITERS := 600  ## bound on offline catch-up iterations (no startup freeze)
 const GROW_INTERVAL := 6.0      ## seconds of full basics before +1 resident
 const EMIGRATE_INTERVAL := 10.0 ## seconds of unmet basics before −1 resident
 const FAVOR_PER_PARAGON_PER_MIN := 0.2  ## CHOSEN DEFAULT (Paragon Favor output)
@@ -30,6 +31,7 @@ var active_index: int = 0
 var currencies: Dictionary = {"coin": 0.0, "cartography": 0.0, "favor": 0.0, "reputation": 0.0}
 var unlocked_tiers: Array = ["pioneers"]
 var elapsed: float = 0.0        ## total simulated game seconds
+var _tick_accum: float = 0.0    ## sub-tick remainder carried across advance() calls
 var _last_emit: float = 0.0     ## throttle the economy_ticked UI signal
 
 # ── lifecycle ────────────────────────────────────────────────────────────────
@@ -46,12 +48,18 @@ func new_game(seed_value := 1337) -> void:
 	currencies = {"coin": 200.0, "cartography": 0.0, "favor": 0.0, "reputation": 0.0}
 	unlocked_tiers = ["pioneers"]
 	elapsed = 0.0
+	_tick_accum = 0.0
 	var isl := MapGen.generate(32, 32, seed_value)
 	isl.stockpile = {"wood": 80.0, "plank": 30.0}
 	islands.append(isl)
 	active_index = 0
 	_place_starting_kontor(isl)
 	_recompute_connectivity(isl)
+
+## Restart in place on THIS instance — keeps HUD/IslandView signal connections valid
+## (they bound to this object in their _ready). See Game.restart().
+func reset(seed_value := 1337) -> void:
+	new_game(seed_value)
 
 func _place_starting_kontor(isl: Island) -> void:
 	var def := Database.building("kontor")
@@ -68,20 +76,37 @@ func _place_starting_kontor(isl: Island) -> void:
 
 # ── the tick ──────────────────────────────────────────────────────────────────
 
-## Advance the simulation by `dt` real seconds, split into stable sub-ticks.
+## Advance the simulation by `dt` real seconds. The remainder below one MAX_STEP is
+## CARRIED across calls (not re-partitioned), so the tick stream — and therefore the
+## resulting state — depends only on total elapsed time, not on how dt was chopped.
+## This is what makes advance(a)+advance(b) == advance(a+b) actually hold.
 func advance(dt: float) -> void:
 	if dt <= 0.0:
 		return
-	var remaining := dt
-	while remaining > 0.0001:
-		var step: float = min(remaining, MAX_STEP)
-		_tick(step)
-		remaining -= step
-		elapsed += step
+	_tick_accum += dt
+	while _tick_accum >= MAX_STEP:
+		_tick(MAX_STEP)
+		_tick_accum -= MAX_STEP
+		elapsed += MAX_STEP
 	_last_emit += dt
 	if _last_emit >= 0.2:
 		_last_emit = 0.0
 		economy_ticked.emit(dt)
+
+## Offline catch-up: simulate `seconds` in a BOUNDED number of coarse steps so loading
+## after a long absence never freezes the first frame. Coarser than the real-time
+## quantum (minor fidelity trade-off for the one-shot replay; the per-tick logic is
+## frame-rate independent so growth/emigration still resolve correctly at large steps).
+func catch_up(seconds: float) -> void:
+	if seconds <= 0.0:
+		return
+	var step: float = max(MAX_STEP, seconds / float(MAX_CATCHUP_ITERS))
+	var remaining := seconds
+	while remaining > 0.0001:
+		var s: float = min(remaining, step)
+		_tick(s)
+		elapsed += s
+		remaining -= s
 
 func _tick(dt: float) -> void:
 	for isl in islands:
@@ -160,18 +185,23 @@ func _phase_population(isl: Island, dt: float) -> void:
 		var lux := _consume_needs(isl, tier.luxury_needs, pb.residents, dt)
 		pb.active = pb.residents > 0
 		# Phase 4: population dynamics — basics drive occupancy with hysteresis.
+		# Timers SUBTRACT whole intervals (never reset to 0) so the remainder carries
+		# and the outcome is independent of how dt was chopped. while-loops handle a
+		# single large (offline) step crossing several intervals.
 		if basics.all_met:
 			pb.unmet_time = 0.0
 			pb.satisfied_time += dt
-			if pb.residents < tier.max_residents and pb.satisfied_time >= GROW_INTERVAL:
-				pb.satisfied_time = 0.0
+			while pb.residents < tier.max_residents and pb.satisfied_time >= GROW_INTERVAL:
+				pb.satisfied_time -= GROW_INTERVAL
 				pb.residents += 1
 				population_changed.emit(pb.tier_id, pb.residents, total_population())
+			if pb.residents >= tier.max_residents:
+				pb.satisfied_time = minf(pb.satisfied_time, GROW_INTERVAL)
 		else:
 			pb.satisfied_time = 0.0
 			pb.unmet_time += dt
-			if pb.unmet_time >= EMIGRATE_INTERVAL and pb.residents > 0:
-				pb.unmet_time = 0.0
+			while pb.unmet_time >= EMIGRATE_INTERVAL and pb.residents > 0:
+				pb.unmet_time -= EMIGRATE_INTERVAL
 				pb.residents -= 1
 				needs_unmet.emit(pb.tier_id, _first_missing(isl, tier))
 				population_changed.emit(pb.tier_id, pb.residents, total_population())
@@ -337,6 +367,7 @@ func to_dict() -> Dictionary:
 	}
 
 func from_dict(d: Dictionary) -> void:
+	_tick_accum = 0.0
 	islands.clear()
 	for isl_d in d.get("islands", []):
 		islands.append(Island.from_dict(isl_d))
@@ -355,5 +386,5 @@ func from_dict(d: Dictionary) -> void:
 		var away: float = clampf(Time.get_unix_time_from_system() - saved_at,
 			0.0, Constants.MAX_OFFLINE_SECONDS)
 		if away > 1.0:
-			advance(away)
+			catch_up(away)
 			notify.emit("Welcome back — simulated %d min away." % int(away / 60.0), "info")

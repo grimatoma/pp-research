@@ -24,7 +24,10 @@ func _initialize() -> void:
 	_test_upgrade_gate()
 	_test_save_round_trip()
 	_test_offline_catchup_determinism()
+	_test_buildcost_producible()
+	_test_save_preserves_timers()
 	_test_mapgen_deterministic()
+	_test_new_game_places_kontor()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -185,22 +188,78 @@ func _test_save_round_trip() -> void:
 	_check(found, "save round-trip preserves the house and residents")
 
 func _test_offline_catchup_determinism() -> void:
+	# advance(a)+advance(b) == advance(a+b) for ARBITRARY splits (non-multiples of the
+	# tick quantum) AND a starvable chain (cider starves as apples deplete), exercising
+	# both the population timers and the production starvation path.
 	var a := _grid_island()
 	var sim_a := _sim_with(a)
 	_place(a, "kontor", Vector2i(1, 1))
-	_place(a, "fishery", Vector2i(1, 6))
-	sim_a.advance(500.0)
-	var fish_a := a.qty("fish")
+	_place(a, "apple_orchard", Vector2i(4, 4))
+	_place(a, "cider_maker", Vector2i(7, 7))
+	var hut_a := _place(a, "pioneer_hut", Vector2i(4, 8))
+	hut_a.residents = 3
+	a.stockpile = {"fish": 1e6, "water": 1e6}
+	sim_a.advance(1000.0)
 
 	var b := _grid_island()
 	var sim_b := _sim_with(b)
 	_place(b, "kontor", Vector2i(1, 1))
-	_place(b, "fishery", Vector2i(1, 6))
-	sim_b.advance(250.0)
-	sim_b.advance(250.0)
-	var fish_b := b.qty("fish")
-	_check(absf(fish_a - fish_b) < 1.0,
-		"split vs single catch-up agree (%.2f vs %.2f)" % [fish_a, fish_b])
+	_place(b, "apple_orchard", Vector2i(4, 4))
+	_place(b, "cider_maker", Vector2i(7, 7))
+	var hut_b := _place(b, "pioneer_hut", Vector2i(4, 8))
+	hut_b.residents = 3
+	b.stockpile = {"fish": 1e6, "water": 1e6}
+	sim_b.advance(317.3)
+	sim_b.advance(412.9)
+	sim_b.advance(269.8)
+
+	_check(is_equal_approx(a.qty("cider"), b.qty("cider")),
+		"split==single for cider (%.3f vs %.3f)" % [a.qty("cider"), b.qty("cider")])
+	_check(is_equal_approx(a.qty("apple"), b.qty("apple")),
+		"split==single for apples (%.3f vs %.3f)" % [a.qty("apple"), b.qty("apple")])
+	_check(hut_a.residents == hut_b.residents,
+		"split==single for residents (%d vs %d)" % [hut_a.residents, hut_b.residents])
+
+func _test_buildcost_producible() -> void:
+	# Every build-cost good and every recipe input must be producible somewhere in the
+	# catalog (currencies exempt) — catches "consumer transcribed, extractor omitted"
+	# soft-locks like the clay→brick→Merchant's Mansion chain.
+	var produced := {}
+	for id in Database.buildings:
+		var b: BuildingDef = Database.buildings[id]
+		if b.recipe != null and b.recipe.output != "":
+			produced[b.recipe.output] = true
+	var missing: Array = []
+	for id in Database.buildings:
+		var b: BuildingDef = Database.buildings[id]
+		var wanted: Array = b.cost.keys()
+		if b.recipe != null:
+			wanted += b.recipe.inputs.keys()
+		for g in wanted:
+			var gd := Database.good(g)
+			if gd != null and gd.category == "currency":
+				continue
+			if not produced.has(g) and not missing.has(g):
+				missing.append(g)
+	_check(missing.is_empty(),
+		"every build-cost/recipe input is producible (missing: %s)" % str(missing))
+
+func _test_save_preserves_timers() -> void:
+	var isl := _grid_island()
+	var sim := _sim_with(isl)
+	_place(isl, "kontor", Vector2i(1, 1))
+	var hut := _place(isl, "pioneer_hut", Vector2i(4, 4))
+	hut.residents = 4
+	hut.unmet_time = 7.5
+	hut.satisfied_time = 3.25
+	var sim2 := WorldSim.new()
+	sim2.from_dict(sim.to_dict())
+	var r := sim2.active_island()
+	var found := false
+	for pb in r.buildings:
+		if pb.building_id == "pioneer_hut":
+			found = is_equal_approx(pb.unmet_time, 7.5) and is_equal_approx(pb.satisfied_time, 3.25)
+	_check(found, "save round-trip preserves hysteresis timers")
 
 func _test_mapgen_deterministic() -> void:
 	var m1 := MapGen.generate(32, 32, 4242)
@@ -214,3 +273,45 @@ func _test_mapgen_deterministic() -> void:
 	_check(int(counts.get(T.GRASS, 0)) > 100, "generated island has ample grass")
 	_check(int(counts.get(T.WATER, 0)) > 50, "generated island has surrounding ocean")
 	_check(int(counts.get(T.RIVER, 0)) > 0, "generated island has a river")
+
+func _test_new_game_places_kontor() -> void:
+	# Regression: the coastal Kontor must place on a *generated* island (beach ring),
+	# otherwise nothing is ever connected. Check several seeds.
+	var placed_all := true
+	for seed_value in [1337, 99, 7, 20240601]:
+		var sim := WorldSim.new()
+		sim.new_game(seed_value)
+		var isl := sim.active_island()
+		var has_kontor := false
+		for pb in isl.buildings:
+			if pb.building_id == "kontor":
+				has_kontor = true
+		if not has_kontor:
+			placed_all = false
+	_check(placed_all, "new_game places a coastal Kontor on generated islands (all seeds)")
+	# And a building placed next to that Kontor is connected.
+	var sim2 := WorldSim.new()
+	sim2.new_game(1337)
+	var isl2 := sim2.active_island()
+	var kontor: PlacedBuilding = null
+	for pb in isl2.buildings:
+		if pb.building_id == "kontor":
+			kontor = pb
+	var connected_ok := false
+	if kontor != null:
+		# Find a grass tile near the Kontor for a well, place it, check connectivity.
+		var well := Database.building("well")
+		for radius in range(1, 10):
+			for dy in range(-radius, radius + 1):
+				for dx in range(-radius, radius + 1):
+					var o: Vector2i = kontor.origin + Vector2i(dx, dy)
+					if isl2.can_place(well, o).ok:
+						var pb := isl2.place(well, o)
+						sim2._recompute_connectivity(isl2)
+						connected_ok = pb.connected
+						break
+				if connected_ok:
+					break
+			if connected_ok:
+				break
+	_check(connected_ok, "a building placed near the Kontor is connected")
