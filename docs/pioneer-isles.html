@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pioneer Isles — Clone Design &amp; Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800;9..144,900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#ECE8DF; --muted:#98A1B0; --line:#2C313D; --bg:#14161D; --paper:#1B1F29; --code:#232834;
+    --accent:#E0A24A; --accent2:#46B6AE; --ok:#52B06B; --danger:#E0593F; --idle:#6B7280;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -14px rgba(0,0,0,.7);
+    --serif:"Fraunces",Georgia,serif; --sans:"IBM Plex Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{font:400 16px/1.64 var(--sans);color:var(--ink);margin:0;
+    background:radial-gradient(1200px 540px at 84% -10%, color-mix(in srgb,var(--accent) 16%,transparent), transparent 60%),
+      radial-gradient(1000px 480px at -8% 2%, color-mix(in srgb,var(--accent2) 14%,transparent), transparent 55%),
+      linear-gradient(180deg, var(--bg) 0%, #0F1116 100%);background-attachment:fixed;}
+  .page{max-width:1080px;margin:0 auto;padding:1.5rem 1.25rem 5rem;}
+  header.hero{border-bottom:3px solid var(--accent);padding:1.5rem 1.6rem 1.2rem;margin-bottom:1.4rem;
+    background:linear-gradient(135deg, color-mix(in srgb,var(--accent) 16%,transparent), color-mix(in srgb,var(--accent2) 12%,transparent));
+    border-radius:14px 14px 6px 6px;box-shadow:var(--shadow);}
+  header.hero h1{font:800 2.6rem/1.08 var(--serif);letter-spacing:-.015em;margin:.1rem 0 .35rem;}
+  .sub{color:var(--muted);font-size:1.05rem;margin:.2rem 0 .8rem;max-width:72ch;}
+  .meta{font-size:.8rem;color:var(--muted);font-family:var(--mono);margin:.3rem 0 .7rem;}
+  .chips{display:flex;flex-wrap:wrap;gap:.4rem;}
+  .chip{font-size:.76rem;font-weight:600;padding:.2rem .62rem;border-radius:999px;background:color-mix(in srgb,var(--accent) 18%,var(--paper));color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--paper));}
+  h2{font:800 1.7rem/1.15 var(--serif);letter-spacing:-.01em;border-bottom:1px solid var(--line);padding-bottom:.25rem;margin-top:2.2rem;}
+  h3{font:600 1.18rem/1.25 var(--serif);margin-top:1.3rem;}
+  code{background:var(--code);padding:.08rem .36rem;border-radius:4px;font:.84em var(--mono);color:#E7C58C;}
+  a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}
+  strong{color:#F6EFE2;}
+  table{border-collapse:collapse;width:100%;margin:.9rem 0;font-size:.86rem;background:var(--paper);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);}
+  th,td{border:1px solid var(--line);padding:.42rem .6rem;text-align:left;vertical-align:top;}
+  th{background:color-mix(in srgb,var(--accent) 13%,var(--paper));font-weight:700;}
+  tbody tr:nth-child(even){background:color-mix(in srgb,#fff 4%,var(--paper));}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1rem 0;}
+  .card{background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:10px;padding:.75rem 1.1rem;box-shadow:var(--shadow);}
+  .card.teal{border-left-color:var(--accent2);} .card.ok{border-left-color:var(--ok);} .card.idle{border-left-color:var(--idle);}
+  .card h3{margin-top:.2rem;}
+  .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.1rem .5rem;border-radius:999px;color:#13151c;}
+  .pill.ok{background:var(--ok);} .pill.idle{background:var(--idle);color:#fff;} .pill.warn{background:var(--accent);}
+  .shot{width:100%;border-radius:12px;border:1px solid var(--line);box-shadow:var(--shadow);image-rendering:pixelated;margin:.6rem 0;}
+  .diagram{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:1.1rem;margin:1.1rem 0;box-shadow:var(--shadow);overflow-x:auto;}
+  .small{font-size:.85rem;color:var(--muted);}
+  pre{background:var(--code);padding:.8rem 1rem;border-radius:10px;overflow-x:auto;font:.82rem/1.5 var(--mono);color:#D7DCE6;box-shadow:var(--shadow);}
+  ul{margin:.4rem 0;} li{margin:.3rem 0;}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="hero">
+    <h1>Pioneer Isles</h1>
+    <p class="sub">A <strong>Godot&nbsp;4 / GDScript clone of Paragon&nbsp;Pioneers&nbsp;2</strong> — the idle, Anno-like island settlement builder. System parity with PP2 is the goal, not engine parity. Built for the aiDev portfolio; art generated with PixelLab.</p>
+    <p class="meta">Owner: grima · repo: <code>ppResearch/paragon-pioneers/</code> · spec: <a href="pp2-spec-extract.json">pp2-spec-extract.json</a> · engine: Godot 4.6 · 2026-06-08</p>
+    <div class="chips">
+      <span class="chip">luxury cascade</span><span class="chip">range logistics, no roads</span>
+      <span class="chip">production chains</span><span class="chip">idle / offline</span>
+      <span class="chip">procedural islands</span><span class="chip">deterministic sim</span>
+    </div>
+  </header>
+
+  <h2>The build, right now</h2>
+  <img class="shot" src="screenshot.png" alt="Pioneer Isles in-engine: a settlement of pixel-art buildings on a procedurally generated island, with HUD.">
+  <p class="small">A demo settlement on a seeded island — autotiled coastline, production buildings clustered in range of the coastal Kontor, houses populated, settlers walking between them. Rendered in-engine.</p>
+
+  <h2>What it IS — built &amp; validated</h2>
+  <p>A playable <strong>temperate-region vertical slice</strong> covering PP2 milestones M1–M5, gated by <strong>34 headless checks</strong> (<code>tests/run_economy_tests.gd</code>, exit 0/1).</p>
+  <div class="grid">
+    <div class="card ok"><h3>Economy core <span class="pill ok">done</span></h3><ul class="small">
+      <li><strong>The luxury cascade</strong> — each tier's luxuries are the next tier's basics, same good &amp; per-resident rate. Verbatim PP2 denominators; golden-asserted.</li>
+      <li><strong>Production chains</strong> — ~36 buildings, single-output recipes with PP2 iteration times &amp; input ratios.</li>
+      <li><strong>Population</strong> — grow on met basics, emigrate when starved (never die), Coin/Favor payout scaled by luxury satisfaction, in-place tier ascension.</li>
+    </ul></div>
+    <div class="card ok"><h3>World &amp; logistics <span class="pill ok">done</span></h3><ul class="small">
+      <li><strong>Procedural islands</strong> — seeded grass/beach/ocean/forest/mountain/river; deterministic.</li>
+      <li><strong>Placement rules</strong> — forest for lumberjacks, mountains for mines, river spots for mills, coast for the Kontor.</li>
+      <li><strong>Range logistics</strong> — buildings work only within Chebyshev range of a storage building. No roads, no worker assignment.</li>
+    </ul></div>
+    <div class="card ok"><h3>Idle &amp; persistence <span class="pill ok">done</span></h3><ul class="small">
+      <li><strong>Deterministic tick</strong> — <code>advance(a)+advance(b) == advance(a+b)</code>; the remainder carries across calls.</li>
+      <li><strong>Offline catch-up</strong> — bounded coarse-step replay of wall-clock time on load (no startup freeze).</li>
+      <li><strong>Save/load</strong> — versioned JSON, discard-on-mismatch, mid-cycle accumulators preserved.</li>
+    </ul></div>
+  </div>
+
+  <h2>Architecture</h2>
+  <p>Follows the spec's directive: <strong>const catalogs + one mutable world object, not many singletons</strong> — which also makes the whole sim reachable headless for tests.</p>
+  <div class="diagram">
+    <svg viewBox="0 0 880 220" width="100%" role="img" aria-label="Data flow: Database static catalog feeds WorldSim, driven by the Game autoload, rendered by the scenes.">
+      <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#E0A24A"/></marker></defs>
+      <g font-family="IBM Plex Sans, sans-serif" font-size="12.5">
+        <rect x="20" y="70" width="190" height="80" rx="10" fill="color-mix(in srgb,#E0A24A 16%,#1B1F29)" stroke="#E0A24A"/>
+        <text x="115" y="98" text-anchor="middle" fill="#ECE8DF" font-weight="700">Database</text>
+        <text x="115" y="118" text-anchor="middle" fill="#98A1B0" font-size="11">static class_name</text>
+        <text x="115" y="134" text-anchor="middle" fill="#98A1B0" font-size="11">goods · buildings · tiers</text>
+        <rect x="345" y="70" width="190" height="80" rx="10" fill="color-mix(in srgb,#46B6AE 16%,#1B1F29)" stroke="#46B6AE"/>
+        <text x="440" y="98" text-anchor="middle" fill="#ECE8DF" font-weight="700">WorldSim</text>
+        <text x="440" y="118" text-anchor="middle" fill="#98A1B0" font-size="11">RefCounted object</text>
+        <text x="440" y="134" text-anchor="middle" fill="#98A1B0" font-size="11">5-phase advance(dt)</text>
+        <rect x="345" y="10" width="190" height="42" rx="10" fill="#1B1F29" stroke="#E0A24A" stroke-dasharray="5 4"/>
+        <text x="440" y="30" text-anchor="middle" fill="#E0A24A" font-weight="700">Game (autoload)</text>
+        <text x="440" y="45" text-anchor="middle" fill="#98A1B0" font-size="10.5">ticks · saves · lifecycle</text>
+        <rect x="670" y="70" width="190" height="80" rx="10" fill="color-mix(in srgb,#E0A24A 16%,#1B1F29)" stroke="#E0A24A"/>
+        <text x="765" y="98" text-anchor="middle" fill="#ECE8DF" font-weight="700">Scenes</text>
+        <text x="765" y="118" text-anchor="middle" fill="#98A1B0" font-size="11">IslandView · HUD</text>
+        <text x="765" y="134" text-anchor="middle" fill="#98A1B0" font-size="11">SettlerLayer · Main</text>
+        <path d="M210 110 L343 110" fill="none" stroke="#E0A24A" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M535 110 L668 110" fill="none" stroke="#E0A24A" stroke-width="2" marker-end="url(#a)"/>
+        <path d="M440 52 L440 68" fill="none" stroke="#E0A24A" stroke-width="2" marker-end="url(#a)"/>
+        <text x="277" y="102" text-anchor="middle" fill="#98A1B0" font-size="10">reads</text>
+        <text x="602" y="102" text-anchor="middle" fill="#98A1B0" font-size="10">renders</text>
+      </g>
+    </svg>
+    <p class="small">Per-tick order (fixed, golden-asserted): connectivity → production → consumption → population → payout.</p>
+  </div>
+
+  <h2>Roadmap</h2>
+  <table>
+    <thead><tr><th>Milestone</th><th>Scope</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>M1–M2</td><td>Deterministic sim, square grid, terrain placement, range/warehouse logistics</td><td><span class="pill ok">done</span></td></tr>
+      <tr><td>M3</td><td>Population, the luxury cascade, emigration, payout-at-100%</td><td><span class="pill ok">done</span></td></tr>
+      <tr><td>M4–M5</td><td>Production chains at scale, Coin economy &amp; Kontor</td><td><span class="pill ok">done</span></td></tr>
+      <tr><td>M6–M7</td><td>Ships, trade routes, regions; Cartography island discovery</td><td><span class="pill idle">specced</span></td></tr>
+      <tr><td>M8</td><td>Auto-resolved Orc combat (3-phase, 12 bosses)</td><td><span class="pill idle">specced</span></td></tr>
+      <tr><td>M9–M10</td><td>Creativity research; Palace → Reputation → Custodian prestige</td><td><span class="pill idle">specced</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small">Full system teardown and the data behind every number: <a href="pp2-spec-extract.json">pp2-spec-extract.json</a>. Contributor guide: the repo <code>CLAUDE.md</code> and <code>README.md</code>.</p>
+
+  <h2>Run it</h2>
+  <pre>godot --path . --import                                              # register class_names (first run)
+godot --path .                                                       # play
+godot --headless --path . --script res://tests/run_economy_tests.gd  # 34 checks, exit 0/1
+godot --path . -- --capture                                          # demo settlement → docs/screenshot.png</pre>
+</div>
+</body>
+</html>

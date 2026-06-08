@@ -371,7 +371,13 @@ static func _house(id: String, name: String, tier_id: String, cost: Dictionary,
 	b.house_tier = tier_id
 	b.tier_unlock = tier_id
 	b.cost = cost
-	b.sprite_path = "res://assets/art/buildings/house.png"
+	# Distinct sprite per tier (cottage → house → townhouse → mansion → residence).
+	# The renderer falls back to `color` if a file is missing.
+	var house_sprite: String = {
+		"pioneers": "house", "colonists": "colonist_house", "townsmen": "townsmen_house",
+		"merchants": "merchant_mansion", "paragons": "paragon_residence",
+	}.get(tier_id, "house")
+	b.sprite_path = "res://assets/art/buildings/%s.png" % house_sprite
 	return b
 
 ## Producer/consumer factory. terrain_tag: "" any-land | "grass" | "forest" |

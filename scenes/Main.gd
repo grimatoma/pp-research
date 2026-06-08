@@ -57,10 +57,12 @@ func _build_demo_layout() -> void:
 	var isl := Game.sim.active_island()
 	isl.stockpile = {"wood": 800.0, "plank": 400.0}
 	Game.sim.currencies["coin"] = 3000.0
+	Game.sim.unlocked_tiers = ["pioneers", "colonists", "townsmen", "merchants"]
 	var plan := [
-		"fishery", "well", "tavern", "lumberjack", "lumberjack",
+		"fishery", "well", "tavern", "lumberjack", "lumberjack", "sawmill",
 		"apple_orchard", "cider_maker", "piggery", "sausage_maker",
-		"pioneer_hut", "pioneer_hut", "pioneer_hut", "pioneer_hut",
+		"wheat_farm", "flour_mill", "bakery", "sheep_farm", "weaver", "cattle_ranch",
+		"pioneer_hut", "pioneer_hut", "colonist_house", "colonist_house", "townsmen_house",
 	]
 	for id in plan:
 		var def := Database.building(id)
@@ -110,7 +112,7 @@ func _frame_island() -> void:
 		sum += (Vector2(pb.origin) + Vector2(def.size) * 0.5) * TILE
 		n += 1
 	_cam.position = sum / n if n > 0 else Vector2(isl.width, isl.height) * TILE * 0.5
-	_cam.zoom = Vector2(1.05, 1.05)
+	_cam.zoom = Vector2(0.9, 0.9)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
