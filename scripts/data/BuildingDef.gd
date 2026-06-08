@@ -23,6 +23,9 @@ var house_tier: String = ""          ## PopTierDef id this house belongs to (low
 var is_storage: bool = false         ## provides connectivity + holds the shared stockpile
 var storage_range: int = 0           ## Chebyshev tiles of connectivity it projects
 
+var is_shipyard: bool = false        ## lets the island build ships (naval logistics)
+var is_palace: bool = false          ## the prestige Palace (Foundation + 5 stages)
+
 var color: Color = Color("c8a06a")   ## placeholder fill
 var sprite_path: String = ""         ## res:// PixelLab sprite (optional)
 

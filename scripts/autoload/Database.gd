@@ -159,6 +159,22 @@ static func _build_goods() -> void:
 	_g("chocolate_candy", "Chocolate Candy", "luxury", Color("5b3a29"))
 	_g("noble_garment", "Noble Garment", "luxury", Color("7d3c98"))
 	_g("wine", "Wine", "luxury", Color("722f37"))
+	# ── weapons (consumed by training buildings) ──────────────────────────────
+	_g("bow", "Bow", "tool", Color("9a7b4f"))
+	_g("sword", "Sword", "tool", Color("c0c4cc"))
+	_g("cannon", "Cannon", "tool", Color("4a4a4a"))
+	# ── military units (stored as goods in the island garrison; no upkeep) ─────
+	# Recruited from population (militia) or trained from militia + a weapon.
+	_g("militia", "Militia", "unit", Color("c9a24a"))
+	_g("archer", "Archer", "unit", Color("8fae5d"))
+	_g("footsoldier", "Footsoldier", "unit", Color("a05a3a"))
+	_g("crossbowman", "Crossbowman", "unit", Color("6f9bd1"))
+	_g("knight", "Knight", "unit", Color("d0d4dc"))
+	_g("cannoneer", "Cannoneer", "unit", Color("5a5a5a"))
+	# Higher units kept in the catalog for battle/enemy use & future training.
+	_g("longbow_archer", "Longbow Archer", "unit", Color("7fae6d"))
+	_g("cavalry", "Cavalry", "unit", Color("b08858"))
+	_g("cuirassier", "Cuirassier", "unit", Color("b0b4bc"))
 
 # ── population tiers (the luxury cascade) ──────────────────────────────────────
 
@@ -304,7 +320,21 @@ static func _build_units() -> void:
 	_u("orc_grunt", "Orc Grunt", 30, 10, 1, [])
 	_u("orc_archer", "Orc Archer", 15, 14, 1, ["Ranged"])
 	_u("orc_brute", "Orc Brute", 80, 22, 2, [])
-	_u("bula", "Warchief Bula", 2500, 150, 100, ["Ranged", "Last", "Splash"], true)
+	# The 12 warchief bosses (one per island size 12→34 step 2; HP NOT monotonic —
+	# Mazoga tankiest). `tier` here is the DURATION weight (100-600), NOT health.
+	# Stats transcribed verbatim from the research spec.
+	_u("bula",    "Warchief Bula",    2500,  150, 100, ["Ranged", "Last", "Splash"], true)
+	_u("durz",    "Warchief Durz",    1100,  300, 140, ["Ranged", "First", "Splash"], true)
+	_u("hork",    "Warchief Hork",    12000, 100, 180, ["Ranged", "Last", "Splash", "Flank"], true)
+	_u("aguk",    "Warchief Aguk",    7000,  250, 220, ["Last", "Splash"], true)
+	_u("kultan",  "Warchief Kul'Tan", 10000, 500, 260, ["Armageddon", "Ranged", "Triple"], true)
+	_u("mazoga",  "Warchief Mazoga",  120000, 100, 300, ["Last", "Splash"], true)
+	_u("durgash", "Warchief Durgash", 40000, 500, 340, ["Ranged", "First", "Splash"], true)
+	_u("zrall",   "Warchief Zrall",   45000, 100, 380, ["LightningBolt", "First", "Splash"], true)
+	_u("krashek", "Warchief Krashek", 35000, 1500, 460, ["Confusion", "First", "Splash"], true)
+	_u("selzok",  "Warchief Selzok",  10000, 250, 500, ["Summon", "Ranged", "Last", "Splash"], true)
+	_u("saukron", "Warchief Saukron", 15000, 3000, 540, ["Bulletproof", "Last", "Splash", "Spiky"], true)
+	_u("nurzhel", "Warchief Nur'Zhel", 75000, 1250, 600, ["Revive", "Ranged", "First", "Splash"], true)
 
 # ── buildings & recipes ────────────────────────────────────────────────────────
 
@@ -440,6 +470,43 @@ static func _build_buildings() -> void:
 		"iron_ingot", 2.0, 960.0, {"coal": 1, "iron_ore": 2}, "merchants", "", {"plank": 30}))
 	_bld(_producer("toolmaker", "Toolmaker", "production", Color("7a8088"), Vector2i(2, 2),
 		"tools", 4.0, 960.0, {"coal": 1, "iron_ingot": 2}, "merchants", "", {"plank": 30}))
+
+	# ── weapon smiths (feed the training buildings) ───────────────────────────
+	_bld(_producer("bowyer", "Bowyer", "military", Color("9a7b4f"), Vector2i(2, 2),
+		"bow", 1.0, 240.0, {"wood": 3, "yarn": 2}, "colonists", "",
+		{"wood": 20}, "res://assets/art/buildings/bowyer.png"))
+	_bld(_producer("weaponsmith", "Weaponsmith", "military", Color("c0c4cc"), Vector2i(2, 2),
+		"sword", 1.0, 240.0, {"iron_ingot": 1, "coal": 1}, "merchants", "",
+		{"plank": 30}, "res://assets/art/buildings/weaponsmith.png"))
+	_bld(_producer("cannon_foundry", "Cannon Foundry", "military", Color("4a4a4a"), Vector2i(2, 2),
+		"cannon", 1.0, 480.0, {"tools": 1, "coal": 1}, "merchants", "river",
+		{"plank": 40}, "res://assets/art/buildings/cannon_foundry.png"))
+
+	# ── training grounds (militia + a weapon → a trained unit) ─────────────────
+	_bld(_producer("archery_range", "Archery Range", "military", Color("8fae5d"), Vector2i(2, 2),
+		"archer", 1.0, 300.0, {"militia": 1, "bow": 1}, "colonists", "",
+		{"wood": 20}, "res://assets/art/buildings/archery_range.png"))
+	_bld(_producer("barracks", "Barracks", "military", Color("a05a3a"), Vector2i(2, 2),
+		"footsoldier", 1.0, 300.0, {"militia": 2, "plank": 1}, "colonists", "",
+		{"plank": 25, "coin": 50}, "res://assets/art/buildings/barracks.png"))
+	_bld(_producer("crossbow_range", "Crossbow Range", "military", Color("6f9bd1"), Vector2i(2, 2),
+		"crossbowman", 1.0, 480.0, {"militia": 2, "bow": 2}, "merchants", "",
+		{"plank": 30}, "res://assets/art/buildings/crossbow_range.png"))
+	_bld(_producer("knight_school", "Knight School", "military", Color("d0d4dc"), Vector2i(2, 2),
+		"knight", 1.0, 600.0, {"militia": 3, "sword": 1}, "merchants", "",
+		{"brick": 40, "coin": 200}, "res://assets/art/buildings/knight_school.png"))
+	_bld(_producer("cannoneer_school", "Cannoneer School", "military", Color("5a5a5a"), Vector2i(2, 2),
+		"cannoneer", 1.0, 900.0, {"militia": 4, "cannon": 1}, "paragons", "",
+		{"marble": 40, "tools": 20}, "res://assets/art/buildings/cannoneer_school.png"))
+
+	# ── naval (shipyard enables ships + inter-island trade routes) ─────────────
+	var shipyard := _make("shipyard", "Shipyard", "naval", Color("8a6a45"), Vector2i(3, 3))
+	shipyard.needs_coast = true
+	shipyard.is_shipyard = true
+	shipyard.tier_unlock = "colonists"
+	shipyard.cost = {"plank": 60, "coin": 150}
+	shipyard.sprite_path = "res://assets/art/buildings/shipyard.png"
+	_bld(shipyard)
 
 ## House factory. A house type appears in the build menu once its tier is reached;
 ## the first higher resident arrives by upgrading the tier below in place.

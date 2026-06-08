@@ -63,7 +63,31 @@ func _run_capture() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://docs/research.png")
 	print("CAPTURE_RESEARCH_OK")
+	# Third shot: the full island framed so the Orc forts show, with the military panel
+	# open and a stocked garrison — validates the M8 conquest UI renders.
+	_hud.call("close_panels")
+	var isl := Game.sim.active_island()
+	isl.stockpile["militia"] = 24.0
+	isl.stockpile["archer"] = 8.0
+	isl.stockpile["knight"] = 6.0
+	_frame_whole_island()
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/island.png")
+	print("CAPTURE_ISLAND_OK")
+	_hud.call("open_military")
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/military.png")
+	print("CAPTURE_MILITARY_OK")
 	get_tree().quit()
+
+func _frame_whole_island() -> void:
+	var isl := Game.sim.active_island()
+	if isl == null:
+		return
+	_cam.position = Vector2(isl.width, isl.height) * TILE * 0.5
+	_cam.zoom = Vector2(0.62, 0.62)
 
 ## Auto-place a demo settlement near the Kontor — also a placement smoke test on a
 ## real generated island.

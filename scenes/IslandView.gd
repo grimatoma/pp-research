@@ -6,6 +6,7 @@ extends Node2D
 const TILE := Constants.TILE_PX
 
 signal building_selected(pb: PlacedBuilding)
+signal camp_selected(camp: OrcCamp)
 signal hover_changed(cell: Vector2i, valid: bool)
 signal build_selection_cleared()
 
@@ -97,7 +98,13 @@ func _on_click(cell: Vector2i) -> void:
 			_rebake()
 		_update_hover_valid()
 	else:
-		_select(isl.building_at(cell))
+		# Uncleared Orc camp → open the military view; otherwise select a building.
+		var camp := isl.camp_at(cell)
+		if camp != null and not camp.cleared:
+			_select(null)
+			camp_selected.emit(camp)
+		else:
+			_select(isl.building_at(cell))
 
 func _select(pb: PlacedBuilding) -> void:
 	_selected = pb
@@ -112,8 +119,31 @@ func _draw() -> void:
 		return
 	_draw_decorations(isl)
 	_draw_buildings(isl)
+	_draw_camps(isl)
 	_draw_selection(isl)
 	_draw_preview(isl)
+
+func _draw_camps(isl: Island) -> void:
+	var camp_tex := _tex("res://assets/art/buildings/orc_camp.png")
+	var font := ThemeDB.fallback_font
+	for camp in isl.camps:
+		if camp.cleared:
+			continue
+		var rect := Rect2(Vector2(camp.origin) * TILE, Vector2(camp.size) * TILE)
+		if camp_tex != null:
+			draw_texture_rect(camp_tex, rect, false)
+		else:
+			draw_rect(rect.grow(-2), Color("5a2a2a"))
+			draw_rect(rect.grow(-2), Color("d03030"), false, 2.0)
+		# A small banner with the defender count and a warchief skull marker.
+		var count := 0
+		for uid in camp.full_army():
+			count += int(camp.full_army()[uid])
+		var label := ("☠ %d" % count) if camp.boss != "" else str(count)
+		var bw: float = rect.size.x
+		draw_rect(Rect2(rect.position + Vector2(0, -14), Vector2(bw, 14)), Color(0.5, 0.1, 0.1, 0.85))
+		draw_string(font, rect.position + Vector2(4, -3), label,
+			HORIZONTAL_ALIGNMENT_LEFT, bw - 4, 11, Color("ffe0e0"))
 
 func _draw_decorations(isl: Island) -> void:
 	var tree := _tex("res://assets/art/terrain/tree.png")

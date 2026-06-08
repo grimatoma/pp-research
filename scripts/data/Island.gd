@@ -7,9 +7,13 @@ extends RefCounted
 var width: int = 32
 var height: int = 32
 var island_name: String = "Verdant Isle"
+var region: String = "temperate"                     ## climate region (temperate/tropical/northern)
 var terrain: PackedInt32Array = PackedInt32Array()   ## width*height, row-major
 var buildings: Array[PlacedBuilding] = []
 var stockpile: Dictionary = {}                       ## good_id -> float
+var camps: Array[OrcCamp] = []                       ## Orc forts blocking buildable land
+var discovered: bool = true                          ## false until a discovery ship arrives
+var settled: bool = false                            ## kept & built on (vs handed over / turned in)
 var _occupancy: Dictionary = {}                      ## Vector2i -> index into `buildings`
 
 const T := Constants.Terrain
@@ -48,6 +52,22 @@ func cells_for(def: BuildingDef, origin: Vector2i) -> Array:
 func is_occupied(c: Vector2i) -> bool:
 	return _occupancy.has(c)
 
+## A cell blocked by an uncleared Orc camp (cannot build there until conquered).
+func is_blocked_by_camp(c: Vector2i) -> bool:
+	for camp in camps:
+		if not camp.cleared and camp.contains(c):
+			return true
+	return false
+
+func camp_at(c: Vector2i) -> OrcCamp:
+	for camp in camps:
+		if camp.contains(c):
+			return camp
+	return null
+
+func active_camps() -> Array:
+	return camps.filter(func(c): return not c.cleared)
+
 func building_at(c: Vector2i) -> PlacedBuilding:
 	if _occupancy.has(c):
 		return buildings[_occupancy[c]]
@@ -71,6 +91,8 @@ func can_place(def: BuildingDef, origin: Vector2i) -> Dictionary:
 			return {"ok": false, "reason": "Out of bounds"}
 		if is_occupied(c):
 			return {"ok": false, "reason": "Tile occupied"}
+		if is_blocked_by_camp(c):
+			return {"ok": false, "reason": "Orc camp — clear it first"}
 		var t := get_terrain(c)
 		if t == T.WATER:
 			return {"ok": false, "reason": "Cannot build on ocean"}
@@ -169,18 +191,28 @@ func to_dict() -> Dictionary:
 	var blds: Array = []
 	for pb in buildings:
 		blds.append(pb.to_dict())
+	var camp_list: Array = []
+	for camp in camps:
+		camp_list.append(camp.to_dict())
 	return {
 		"width": width,
 		"height": height,
 		"island_name": island_name,
+		"region": region,
 		"terrain": Array(terrain),
 		"buildings": blds,
 		"stockpile": stockpile.duplicate(),
+		"camps": camp_list,
+		"discovered": discovered,
+		"settled": settled,
 	}
 
 static func from_dict(d: Dictionary) -> Island:
 	var isl := Island.new(int(d.get("width", 32)), int(d.get("height", 32)))
 	isl.island_name = String(d.get("island_name", "Verdant Isle"))
+	isl.region = String(d.get("region", "temperate"))
+	isl.discovered = bool(d.get("discovered", true))
+	isl.settled = bool(d.get("settled", false))
 	var terr: Array = d.get("terrain", [])
 	if terr.size() == isl.width * isl.height:
 		isl.terrain = PackedInt32Array(terr)
@@ -189,5 +221,7 @@ static func from_dict(d: Dictionary) -> Island:
 	var sp: Dictionary = d.get("stockpile", {})
 	for k in sp:
 		isl.stockpile[k] = float(sp[k])
+	for cd in d.get("camps", []):
+		isl.camps.append(OrcCamp.from_dict(cd))
 	isl._reindex()
 	return isl

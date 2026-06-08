@@ -13,6 +13,10 @@ var _pop_lbl: Label
 var _time_lbl: Label
 var _research_panel: PanelContainer
 var _research_body: VBoxContainer
+var _military_panel: PanelContainer
+var _military_body: VBoxContainer
+var _deploy_camp: OrcCamp = null
+var _deploy_spins: Dictionary = {}  ## unit_id -> SpinBox
 var _stock_box: VBoxContainer
 var _build_box: HBoxContainer
 var _inspector: PanelContainer
@@ -24,10 +28,11 @@ var _active_build_btn: Button = null
 var _build_buttons: Dictionary = {}  ## building_id -> Button
 var _refresh_accum := 0.0
 
-const CAT_ORDER := ["house", "civic", "food", "raw", "production", "storage"]
+const CAT_ORDER := ["house", "civic", "food", "raw", "production", "military", "naval", "storage"]
 const CAT_TITLE := {
 	"house": "Houses", "civic": "Services", "food": "Food",
-	"raw": "Raw", "production": "Workshops", "storage": "Storage",
+	"raw": "Raw", "production": "Workshops", "military": "Military",
+	"naval": "Naval", "storage": "Storage",
 }
 
 func _ready() -> void:
@@ -37,9 +42,12 @@ func _ready() -> void:
 	_build_inspector()
 	_build_menu()
 	_build_research_panel()
+	_build_military_panel()
 	_build_toast()
 	Game.sim.economy_ticked.connect(func(_d): _request_refresh())
 	Game.sim.notify.connect(_on_notify)
+	Game.sim.expedition_resolved.connect(func(_i, _c, _w): _refresh_military())
+	Game.sim.expedition_launched.connect(func(_i, _c): _refresh_military())
 	Game.sim.tier_unlocked.connect(func(_t):
 		_rebuild_build_menu()
 		_refresh_research())
@@ -53,6 +61,7 @@ func bind_island(view: Node2D) -> void:
 	island_view = view
 	view.building_selected.connect(_on_building_selected)
 	view.build_selection_cleared.connect(_clear_active_build_btn)
+	view.camp_selected.connect(_on_camp_selected)
 
 # ── top bar ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +94,14 @@ func _build_top_bar() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
+	var military_btn := Button.new()
+	military_btn.text = "Military"
+	military_btn.pressed.connect(func():
+		_military_panel.visible = not _military_panel.visible
+		if _military_panel.visible:
+			_deploy_camp = null
+			_refresh_military())
+	row.add_child(military_btn)
 	var research_btn := Button.new()
 	research_btn.text = "Research"
 	research_btn.pressed.connect(func():
@@ -414,6 +431,180 @@ func _make_research_row(perk: ResearchDef) -> Control:
 	row.add_child(btn)
 	return row
 
+# ── military panel (garrison · expeditions · conquest) ───────────────────────────
+
+func _build_military_panel() -> void:
+	_military_panel = PanelContainer.new()
+	_military_panel.anchor_left = 0.5
+	_military_panel.anchor_right = 0.5
+	_military_panel.anchor_top = 0.0
+	_military_panel.offset_top = 56
+	_military_panel.offset_left = -230
+	_military_panel.offset_right = 230
+	_military_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_military_panel.add_theme_stylebox_override("panel", _bg(Color(0.10, 0.10, 0.13, 0.97)))
+	_military_panel.visible = false
+	add_child(_military_panel)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(460, 460)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_military_body = VBoxContainer.new()
+	_military_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_military_body)
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 10)
+	m.add_child(scroll)
+	_military_panel.add_child(m)
+
+func open_military() -> void:
+	_military_panel.visible = true
+	_deploy_camp = null
+	_refresh_military()
+
+## Hide all floating panels (used by the screenshot harness and panel toggles).
+func close_panels() -> void:
+	if _research_panel:
+		_research_panel.visible = false
+	if _military_panel:
+		_military_panel.visible = false
+
+func _on_camp_selected(camp: OrcCamp) -> void:
+	_military_panel.visible = true
+	_deploy_camp = camp
+	_clear_active_build_btn()
+	_inspector.visible = false
+	_refresh_military()
+
+func _refresh_military() -> void:
+	if _military_panel == null or not _military_panel.visible:
+		return
+	for c in _military_body.get_children():
+		c.queue_free()
+	var isl := Game.sim.active_island()
+	if isl == null:
+		return
+	_add_label(_military_body, "Military — %s" % isl.island_name, 16)
+
+	# Garrison roster.
+	_add_label(_military_body, "Garrison", 13, Color(0.7, 0.78, 0.9))
+	var gar := Game.sim.garrison(isl)
+	if gar.is_empty():
+		_add_label(_military_body, "No troops. Satisfied houses muster Militia over time.",
+			11, Color(0.6, 0.65, 0.72))
+	else:
+		for uid in gar:
+			_add_label(_military_body, _unit_line(uid, int(gar[uid])), 12)
+
+	# In-flight expeditions.
+	var mine: Array = []
+	for e in Game.sim.expeditions:
+		if int(e.island_index) == Game.sim.active_index:
+			mine.append(e)
+	if not mine.is_empty():
+		_add_label(_military_body, "Expeditions in progress", 13, Color(0.7, 0.78, 0.9))
+		for e in mine:
+			var remaining: float = maxf(0.0, float(e.total) - float(e.elapsed))
+			var cname := "a camp"
+			for c in isl.camps:
+				if c.id == int(e.camp_id):
+					cname = c.display_name
+			_add_label(_military_body, "⚔ %s — %s remaining" % [cname, _fmt_time(remaining)],
+				12, Color("e0c060"))
+
+	# Camps to conquer.
+	var camps := isl.active_camps()
+	_add_label(_military_body, "Orc forts (%d)" % camps.size(), 13, Color(0.7, 0.78, 0.9))
+	if camps.is_empty():
+		_add_label(_military_body, "This island is pacified.", 11, Color(0.6, 0.8, 0.65))
+	for camp in camps:
+		_military_body.add_child(_make_camp_row(camp))
+
+	# Deploy interface for the focused camp.
+	if _deploy_camp != null and not _deploy_camp.cleared \
+			and Game.sim.expedition_for(Game.sim.active_index, _deploy_camp.id).is_empty():
+		_military_body.add_child(HSeparator.new())
+		_build_deploy_section(_deploy_camp, isl)
+
+func _make_camp_row(camp: OrcCamp) -> Control:
+	var box := VBoxContainer.new()
+	var title := camp.display_name + (" ☠" if camp.boss != "" else "")
+	_add_label(box, title, 13, Color("e08a8a"))
+	_add_label(box, "Defenders: " + _army_summary(camp.full_army()), 11, Color(0.8, 0.82, 0.86))
+	var busy := not Game.sim.expedition_for(Game.sim.active_index, camp.id).is_empty()
+	var btn := Button.new()
+	btn.text = "Under attack…" if busy else "Plan attack"
+	btn.disabled = busy
+	btn.pressed.connect(func():
+		_deploy_camp = camp
+		_refresh_military())
+	box.add_child(btn)
+	return box
+
+func _build_deploy_section(camp: OrcCamp, isl: Island) -> void:
+	_deploy_spins.clear()
+	_add_label(_military_body, "Deploy to %s" % camp.display_name, 14, Color("ffd34a"))
+	_add_label(_military_body, "Defenders: " + _army_summary(camp.full_army()), 11,
+		Color(0.8, 0.82, 0.86))
+	var gar := Game.sim.garrison(isl)
+	if gar.is_empty():
+		_add_label(_military_body, "No troops to send.", 12, Color("e0913a"))
+		return
+	for uid in gar:
+		var row := HBoxContainer.new()
+		var lbl := Label.new()
+		lbl.text = "%s (have %d)" % [Database.good_name(uid), int(gar[uid])]
+		lbl.custom_minimum_size = Vector2(180, 0)
+		row.add_child(lbl)
+		var spin := SpinBox.new()
+		spin.min_value = 0
+		spin.max_value = int(gar[uid])
+		spin.value = int(gar[uid])
+		spin.custom_minimum_size = Vector2(90, 0)
+		row.add_child(spin)
+		_deploy_spins[uid] = spin
+		_military_body.add_child(row)
+	var attack := Button.new()
+	attack.text = "⚔ Launch attack (cap %d)" % Game.sim.army_cap()
+	attack.pressed.connect(func(): _launch_attack(camp))
+	_military_body.add_child(attack)
+
+func _launch_attack(camp: OrcCamp) -> void:
+	var army: Dictionary = {}
+	for uid in _deploy_spins:
+		var n := int((_deploy_spins[uid] as SpinBox).value)
+		if n > 0:
+			army[uid] = n
+	var res := Game.sim.send_expedition(Game.sim.active_index, camp.id, army)
+	if not res.ok:
+		Game.sim.notify.emit(res.reason, "warn")
+	else:
+		_deploy_camp = null
+		if island_view:
+			island_view.queue_redraw()
+	_refresh_military()
+
+func _unit_line(uid: String, count: int) -> String:
+	var u := Database.unit(uid)
+	if u == null:
+		return "%s ×%d" % [Database.good_name(uid), count]
+	var ab := (" [" + ", ".join(u.abilities) + "]") if not u.abilities.is_empty() else ""
+	return "%s ×%d — %d hp / %d atk%s" % [u.display_name, count, u.hp, u.atk, ab]
+
+func _army_summary(army: Dictionary) -> String:
+	var parts: Array = []
+	for uid in army:
+		parts.append("%d %s" % [int(army[uid]), Database.good_name(uid)])
+	return ", ".join(parts) if not parts.is_empty() else "—"
+
+func _fmt_time(seconds: float) -> String:
+	var s := int(seconds)
+	if s >= 3600:
+		return "%dh %dm" % [s / 3600, (s % 3600) / 60]
+	if s >= 60:
+		return "%dm %ds" % [s / 60, s % 60]
+	return "%ds" % s
+
 # ── toast / refresh / helpers ───────────────────────────────────────────────────
 
 func _build_toast() -> void:
@@ -461,6 +652,10 @@ func _refresh() -> void:
 	_refresh_build_affordability()
 	_refresh_inspector()
 	_refresh_research()
+	# Skip the periodic military rebuild while the player is setting up a deployment —
+	# rebuilding would reset the SpinBoxes mid-interaction. Overview refreshes freely.
+	if _deploy_camp == null:
+		_refresh_military()
 
 func _refresh_build_affordability() -> void:
 	for id in _build_buttons:

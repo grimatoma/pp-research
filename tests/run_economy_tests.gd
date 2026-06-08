@@ -31,6 +31,12 @@ func _initialize() -> void:
 	_test_creativity_and_research()
 	_test_research_gating_and_repeatable()
 	_test_research_save_roundtrip()
+	_test_recruitment()
+	_test_camp_generation_blocks_land()
+	_test_expedition_clears_camp()
+	_test_warchief_grants_cartography()
+	_test_expedition_loss_keeps_camp()
+	_test_expedition_save_roundtrip()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -228,6 +234,9 @@ func _test_buildcost_producible() -> void:
 	# catalog (currencies exempt) — catches "consumer transcribed, extractor omitted"
 	# soft-locks like the clay→brick→Merchant's Mansion chain.
 	var produced := {}
+	# Militia is recruited from satisfied population (not a building recipe), so it is
+	# "producible" for the purposes of this soft-lock check.
+	produced["militia"] = true
 	for id in Database.buildings:
 		var b: BuildingDef = Database.buildings[id]
 		if b.recipe != null and b.recipe.output != "":
@@ -372,3 +381,92 @@ func _test_research_save_roundtrip() -> void:
 	var wh := Database.building("warehouse")
 	_check(is_equal_approx(sim2.effective_cost(wh).get("wood", 0.0), 17.0),
 		"research modifiers reapplied on load")
+
+# ── military / expeditions (M8) ──────────────────────────────────────────────────
+
+func _test_recruitment() -> void:
+	var isl := _grid_island()
+	var sim := _sim_with(isl)
+	_place(isl, "kontor", Vector2i(1, 1))
+	var hut := _place(isl, "pioneer_hut", Vector2i(4, 4))
+	hut.residents = 10
+	isl.stockpile = {"fish": 1e6, "water": 1e6}
+	sim.advance(300.0)
+	_check(isl.qty("militia") > 0.5,
+		"a satisfied house musters Militia (%.2f)" % isl.qty("militia"))
+	_check(sim.garrison(isl).get("militia", 0) >= 1, "garrison reports whole Militia units")
+
+func _test_camp_generation_blocks_land() -> void:
+	var isl := MapGen.generate(32, 32, 1337)
+	_check(isl.camps.size() == 2, "MapGen places 2 Orc camps (%d)" % isl.camps.size())
+	# Every camp footprint cell is unbuildable.
+	var camp: OrcCamp = isl.camps[0]
+	var blocked := isl.is_blocked_by_camp(camp.origin)
+	var def := Database.building("warehouse")
+	var place_blocked: bool = not bool(isl.can_place(def, camp.origin).ok)
+	_check(blocked and place_blocked, "an uncleared camp blocks building on its tiles")
+	# Determinism: same seed → same camp origins.
+	var isl2 := MapGen.generate(32, 32, 1337)
+	var same := isl2.camps.size() == isl.camps.size() \
+		and isl2.camps[0].origin == isl.camps[0].origin
+	_check(same, "camp placement is deterministic for a fixed seed")
+
+func _test_expedition_clears_camp() -> void:
+	var isl := _grid_island(24, 24)
+	var sim := _sim_with(isl)
+	var camp := OrcCamp.new(1, Vector2i(10, 10), Vector2i(3, 3))
+	camp.army = {"orcling": 5, "orc_grunt": 2}
+	isl.camps.append(camp)
+	isl.stockpile["knight"] = 20.0  # a strong garrison
+	var res := sim.send_expedition(0, 1, {"knight": 20})
+	_check(res.ok, "expedition launches with a sufficient garrison")
+	_check(int(floor(isl.qty("knight"))) == 0, "deployed units leave the garrison")
+	_check(sim.expeditions.size() == 1, "one expedition in flight")
+	# Advance past the battle duration; the camp should fall and survivors return.
+	sim.advance(sim.expeditions[0].total + 5.0)
+	_check(camp.cleared, "winning the battle clears the camp")
+	_check(sim.expeditions.is_empty(), "the resolved expedition is removed")
+	_check(isl.qty("knight") > 0.5, "victorious survivors march home (%.0f)" % isl.qty("knight"))
+	_check(isl.can_place(Database.building("warehouse"), Vector2i(10, 10)).ok,
+		"cleared land becomes buildable")
+
+func _test_warchief_grants_cartography() -> void:
+	var isl := _grid_island(24, 24)
+	var sim := _sim_with(isl)
+	var camp := OrcCamp.new(1, Vector2i(10, 10), Vector2i(3, 3))
+	camp.boss = "bula"
+	camp.army = {"orc_grunt": 3}
+	isl.camps.append(camp)
+	isl.stockpile["knight"] = 40.0
+	var carto0: float = sim.currencies.get("cartography", 0.0)
+	sim.send_expedition(0, 1, {"knight": 40})
+	sim.advance(sim.expeditions[0].total + 5.0)
+	_check(camp.cleared, "warchief fort cleared by a large army")
+	_check(sim.currencies.get("cartography", 0.0) >= carto0 + 1.0,
+		"defeating a warchief grants +1 Cartography")
+
+func _test_expedition_loss_keeps_camp() -> void:
+	var isl := _grid_island(24, 24)
+	var sim := _sim_with(isl)
+	var camp := OrcCamp.new(1, Vector2i(10, 10), Vector2i(3, 3))
+	camp.army = {"orc_brute": 12, "orc_archer": 8}  # too tough for two militia
+	isl.camps.append(camp)
+	isl.stockpile["militia"] = 2.0
+	sim.send_expedition(0, 1, {"militia": 2})
+	sim.advance(sim.expeditions[0].total + 5.0)
+	_check(not camp.cleared, "a losing expedition leaves the camp standing")
+
+func _test_expedition_save_roundtrip() -> void:
+	var isl := _grid_island(24, 24)
+	var sim := _sim_with(isl)
+	var camp := OrcCamp.new(1, Vector2i(10, 10), Vector2i(3, 3))
+	camp.army = {"orcling": 5}
+	isl.camps.append(camp)
+	isl.stockpile["knight"] = 10.0
+	sim.send_expedition(0, 1, {"knight": 10})
+	var sim2 := WorldSim.new()
+	sim2.from_dict(sim.to_dict())
+	_check(sim2.expeditions.size() == 1, "in-flight expedition persists across save")
+	_check(sim2.active_island().camps.size() == 1, "camps persist across save")
+	_check(sim2.active_island().camps[0].army.get("orcling", 0) == 5,
+		"camp army persists across save")
