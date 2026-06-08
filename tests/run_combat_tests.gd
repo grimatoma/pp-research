@@ -19,6 +19,9 @@ func _initialize() -> void:
 	_test_win_on_mutual_death()
 	_test_ranged_protected_by_melee()
 	_test_duration_formula()
+	_test_trample_carries_overkill()
+	_test_bulletproof_immune_to_ranged()
+	_test_determinism_with_boss_abilities()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -81,3 +84,27 @@ func _test_duration_formula() -> void:
 	# Capped at 12h for huge armies.
 	var capped := B.duration_seconds({"knight": 100000}, {"bula": 100})
 	_check(capped <= 12.0 * 3600.0 + 0.001, "duration caps at 12h")
+
+func _test_trample_carries_overkill() -> void:
+	# A lone Cannoneer (Trample, 80 atk, Last) splashes its overkill across the 3
+	# orclings (10 HP each), clearing them in one strike → a single round.
+	var o := B.resolve({"cannoneer": 1}, {"orcling": 3}, _rng(2))
+	_check(o.winner == "attacker", "Trample Cannoneer wins")
+	_check(o.rounds == 1, "Trample clears all three orclings in one strike (1 round)")
+
+func _test_bulletproof_immune_to_ranged() -> void:
+	# Saukron is Bulletproof — a ranged army deals zero and loses, but a melee army
+	# of comparable strength breaks through.
+	var ranged := B.resolve({"crossbowman": 250}, {"saukron": 1}, _rng(3))
+	_check(ranged.winner == "defender", "Bulletproof Saukron is immune to a ranged army")
+	var melee := B.resolve({"knight": 500}, {"saukron": 1}, _rng(3))
+	_check(melee.winner == "attacker", "a strong melee army defeats Bulletproof Saukron")
+
+func _test_determinism_with_boss_abilities() -> void:
+	# A boss with Splash/Last (Bula) must still resolve identically for a fixed seed.
+	var a := {"knight": 40, "archer": 20}
+	var d := {"bula": 1, "orc_grunt": 8}
+	var o1 := B.resolve(a.duplicate(), d.duplicate(), _rng(99))
+	var o2 := B.resolve(a.duplicate(), d.duplicate(), _rng(99))
+	_check(o1.winner == o2.winner and o1.rounds == o2.rounds,
+		"boss-ability battles stay deterministic for a fixed seed")

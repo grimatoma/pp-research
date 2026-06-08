@@ -15,8 +15,14 @@ extends RefCounted
 ##   the whole battle is reproducible).
 ## - WIN IF ALL ENEMIES DIE — even if all your units also die.
 ##
-## Armies are Dictionary[unit_id -> count]. Exotic boss abilities (Splash, Armageddon,
-## Lightning Bolt, Summon, Revive, …) are recognised in the data but not yet resolved.
+## Armies are Dictionary[unit_id -> count]. Resolved abilities: First/Last/Double/Triple
+## (phase membership), Ranged (target-after-melee), Flank (lowest-max-HP first),
+## Splash/Trample (overkill carries to the next target), Bulletproof (immune to ranged),
+## Spiky (melee attacker takes 5 back), and the between-rounds boss effects Armageddon
+## (5 to all both sides), Lightning Bolt (kill the highest-total-HP enemy type),
+## Revive (resurrect half the fallen each round), and Summon (spawn reinforcements,
+## scaled down from the spec's 100/400). Still unresolved (rare/defensive): Confusion,
+## Charge/Defender/Piercing, Stalwart/Shielded/Quicksilver, Explosive, Stabilization.
 
 const PHASE_FIRST := 0
 const PHASE_NORMAL := 1
@@ -38,6 +44,9 @@ static func resolve(attacker_army: Dictionary, defender_army: Dictionary,
 			_resolve_phase(atk, dfn, phase, rng)
 			if _alive_count(atk) == 0 or _alive_count(dfn) == 0:
 				break
+		# Between-rounds boss abilities (Armageddon / Lightning Bolt / Revive / Summon).
+		if _alive_count(atk) > 0 and _alive_count(dfn) > 0:
+			_apply_round_effects(atk, dfn)
 	var dfn_left := _alive_count(dfn)
 	return {
 		"winner": "attacker" if dfn_left == 0 else "defender",
@@ -118,16 +127,105 @@ static func _strike(attackers: Array, enemy_alive: Array, phase: int, rng: Rando
 	for a in attackers:
 		if a.hp <= 0 or not _acts_in_phase(a.def, phase):
 			continue
-		var target: Dictionary
-		if a.def.has_ability("Flank"):
-			target = _lowest_max_hp(pool)
-		else:
-			target = pool[idx % pool.size()]
 		var dmg: int = a.def.atk
 		if rng.randf() < a.crit:
 			dmg *= 2
-		target.incoming += dmg
+		# Splash / Trample: overkill carries to the next target in the pool.
+		if a.def.has_ability("Splash") or a.def.has_ability("Trample"):
+			_splash_assign(a, dmg, pool)
+		else:
+			var target: Dictionary = _lowest_max_hp(pool) if a.def.has_ability("Flank") \
+				else pool[idx % pool.size()]
+			_assign_hit(a, target, dmg)
 		idx += 1
+
+## Apply one attacker's damage to one target, honouring Bulletproof (ranged immunity)
+## and Spiky (melee attackers take 5 back).
+static func _assign_hit(attacker: Dictionary, target: Dictionary, dmg: int) -> void:
+	if attacker.def.is_ranged() and target.def.has_ability("Bulletproof"):
+		return  # immune to ranged damage
+	target.incoming += dmg
+	if target.def.has_ability("Spiky") and not attacker.def.is_ranged():
+		attacker.incoming += 5
+
+## Distribute a Splash/Trample attacker's damage across the pool, carrying overkill.
+static func _splash_assign(attacker: Dictionary, dmg: int, pool: Array) -> void:
+	var remaining := dmg
+	for t in pool:
+		if remaining <= 0:
+			break
+		if attacker.def.is_ranged() and t.def.has_ability("Bulletproof"):
+			continue
+		var take: int = min(remaining, t.def.hp)  # carry overkill past each target's HP
+		t.incoming += take
+		if t.def.has_ability("Spiky") and not attacker.def.is_ranged():
+			attacker.incoming += 5
+		remaining -= take
+
+# ── between-rounds boss abilities ───────────────────────────────────────────────
+
+static func _apply_round_effects(atk: Array, dfn: Array) -> void:
+	# Armageddon: 5 damage to EVERY unit on both sides each round.
+	if _side_has_alive_ability(atk, "Armageddon") or _side_has_alive_ability(dfn, "Armageddon"):
+		for u in atk:
+			if u.hp > 0: u.hp -= 5
+		for u in dfn:
+			if u.hp > 0: u.hp -= 5
+	# Lightning Bolt: kill one enemy unit of the highest-total-HP type each round.
+	if _side_has_alive_ability(dfn, "LightningBolt"):
+		_lightning(atk)
+	if _side_has_alive_ability(atk, "LightningBolt"):
+		_lightning(dfn)
+	# Revive: resurrect half of a side's fallen units each round.
+	if _side_has_alive_ability(atk, "Revive"):
+		_revive(atk)
+	if _side_has_alive_ability(dfn, "Revive"):
+		_revive(dfn)
+	# Summon: the boss spawns reinforcements onto its side (scaled from the spec).
+	if _side_has_alive_ability(dfn, "Summon"):
+		_summon(dfn)
+	if _side_has_alive_ability(atk, "Summon"):
+		_summon(atk)
+
+static func _side_has_alive_ability(army: Array, ability: String) -> bool:
+	for u in army:
+		if u.hp > 0 and u.def.has_ability(ability):
+			return true
+	return false
+
+static func _lightning(army: Array) -> void:
+	var totals: Dictionary = {}
+	for u in army:
+		if u.hp > 0:
+			totals[u.id] = int(totals.get(u.id, 0)) + u.hp
+	if totals.is_empty():
+		return
+	var top_id := ""
+	var top := -1
+	for id in totals:
+		if int(totals[id]) > top:
+			top = int(totals[id])
+			top_id = id
+	for u in army:
+		if u.hp > 0 and u.id == top_id:
+			u.hp = 0
+			return
+
+static func _revive(army: Array) -> void:
+	var fallen: Array = army.filter(func(u): return u.hp <= 0)
+	var n := fallen.size() / 2
+	for i in n:
+		fallen[i].hp = fallen[i].def.hp
+
+static func _summon(army: Array) -> void:
+	# Scaled-down Summon: a few orclings + grunts per round (spec's 100/400 would be
+	# unbounded). Defender side, so use the Orc crit chance.
+	for spawn in [["orcling", 3], ["orc_grunt", 2]]:
+		var def := Database.unit(spawn[0])
+		if def == null:
+			continue
+		for _i in int(spawn[1]):
+			army.append({"id": spawn[0], "def": def, "hp": def.hp, "crit": 0.6, "incoming": 0})
 
 static func _lowest_max_hp(pool: Array) -> Dictionary:
 	var best: Dictionary = pool[0]
