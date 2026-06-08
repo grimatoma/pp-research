@@ -8,8 +8,11 @@ var island_view: Node2D
 var _coin_lbl: Label
 var _favor_lbl: Label
 var _carto_lbl: Label
+var _creativity_lbl: Label
 var _pop_lbl: Label
 var _time_lbl: Label
+var _research_panel: PanelContainer
+var _research_body: VBoxContainer
 var _stock_box: VBoxContainer
 var _build_box: HBoxContainer
 var _inspector: PanelContainer
@@ -33,10 +36,16 @@ func _ready() -> void:
 	_build_stockpile_panel()
 	_build_inspector()
 	_build_menu()
+	_build_research_panel()
 	_build_toast()
 	Game.sim.economy_ticked.connect(func(_d): _request_refresh())
 	Game.sim.notify.connect(_on_notify)
-	Game.sim.tier_unlocked.connect(func(_t): _rebuild_build_menu())
+	Game.sim.tier_unlocked.connect(func(_t):
+		_rebuild_build_menu()
+		_refresh_research())
+	Game.sim.research_completed.connect(func(_p):
+		_rebuild_build_menu()
+		_refresh_research())
 	Game.sim.population_changed.connect(func(_a, _b, _c): _request_refresh())
 	_refresh()
 
@@ -70,11 +79,19 @@ func _build_top_bar() -> void:
 	_coin_lbl = _chip(row, "Coin")
 	_favor_lbl = _chip(row, "Favor")
 	_carto_lbl = _chip(row, "Carto")
+	_creativity_lbl = _chip(row, "Creativity")
 	_pop_lbl = _chip(row, "Pop")
 	_time_lbl = _chip(row, "Day")
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
+	var research_btn := Button.new()
+	research_btn.text = "Research"
+	research_btn.pressed.connect(func():
+		_research_panel.visible = not _research_panel.visible
+		if _research_panel.visible:
+			_refresh_research())
+	row.add_child(research_btn)
 	var restart := Button.new()
 	restart.text = "New Run"
 	restart.pressed.connect(func():
@@ -325,6 +342,78 @@ func _needs_summary(tier: PopTierDef) -> String:
 		parts.append(("✓" if ok else "✗") + Database.good_name(g))
 	return ", ".join(parts)
 
+# ── research panel ──────────────────────────────────────────────────────────────
+
+func _build_research_panel() -> void:
+	_research_panel = PanelContainer.new()
+	_research_panel.anchor_left = 0.5
+	_research_panel.anchor_right = 0.5
+	_research_panel.anchor_top = 0.0
+	_research_panel.offset_top = 56
+	_research_panel.offset_left = -200
+	_research_panel.offset_right = 200
+	_research_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_research_panel.add_theme_stylebox_override("panel", _bg(Color(0.10, 0.11, 0.15, 0.97)))
+	_research_panel.visible = false
+	add_child(_research_panel)
+	var v := VBoxContainer.new()
+	_add_label(v, "Research — spend Creativity on perks", 16)
+	_research_body = VBoxContainer.new()
+	v.add_child(_research_body)
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 10)
+	m.add_child(v)
+	_research_panel.add_child(m)
+
+## Open the research panel (used by the screenshot harness and could back a hotkey).
+func open_research() -> void:
+	_research_panel.visible = true
+	_refresh_research()
+
+func _refresh_research() -> void:
+	if _research_panel == null or not _research_panel.visible:
+		return
+	for c in _research_body.get_children():
+		c.queue_free()
+	var by_tree: Dictionary = {}
+	for pid in Database.all_research():
+		var perk: ResearchDef = Database.research_perk(pid)
+		if not Game.sim.research_available(perk):
+			continue
+		by_tree.get_or_add(perk.tree, []).append(perk)
+	var order: Array = []
+	order.append_array(Database.all_tiers())
+	order.append("infinite")
+	for tree in order:
+		if not by_tree.has(tree):
+			continue
+		var title := (Database.tier(tree).display_name if Database.tier(tree) else "Infinite") + " tree"
+		_add_label(_research_body, title, 13, Color(0.7, 0.78, 0.9))
+		for perk in by_tree[tree]:
+			_research_body.add_child(_make_research_row(perk))
+
+func _make_research_row(perk: ResearchDef) -> Control:
+	var row := HBoxContainer.new()
+	var info := Label.new()
+	var rank := Game.sim.research_rank(perk.id)
+	var rank_s := (" (rank %d)" % rank) if perk.repeatable and rank > 0 else ""
+	info.text = "%s%s — %s" % [perk.display_name, rank_s, perk.description]
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(300, 0)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	var btn := Button.new()
+	var cost := Game.sim.research_cost(perk)
+	btn.text = "%d ◆" % cost
+	btn.disabled = not Game.sim.can_research(perk)
+	btn.pressed.connect(func():
+		if Game.sim.research(perk):
+			_refresh_research()
+			_refresh())
+	row.add_child(btn)
+	return row
+
 # ── toast / refresh / helpers ───────────────────────────────────────────────────
 
 func _build_toast() -> void:
@@ -365,11 +454,13 @@ func _refresh() -> void:
 	_coin_lbl.text = "Coin %d" % int(Game.sim.coin())
 	_favor_lbl.text = "Favor %d" % int(Game.sim.currencies.get("favor", 0))
 	_carto_lbl.text = "Carto %d" % int(Game.sim.currencies.get("cartography", 0))
+	_creativity_lbl.text = "Creativity %d" % int(Game.sim.creativity)
 	_pop_lbl.text = "Pop %d" % Game.sim.total_population()
 	_time_lbl.text = "Day %d" % (int(Game.sim.elapsed / 120.0) + 1)
 	_refresh_stockpile()
 	_refresh_build_affordability()
 	_refresh_inspector()
+	_refresh_research()
 
 func _refresh_build_affordability() -> void:
 	for id in _build_buttons:

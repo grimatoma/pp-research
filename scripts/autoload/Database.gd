@@ -16,6 +16,8 @@ static var goods: Dictionary = {}        ## id -> GoodDef
 static var buildings: Dictionary = {}    ## id -> BuildingDef
 static var tiers: Dictionary = {}        ## id -> PopTierDef
 static var tier_order: Array[String] = [] ## tier ids, lowest → highest
+static var research_perks: Dictionary = {} ## id -> ResearchDef
+static var research_order: Array[String] = [] ## perk ids, catalog order
 static var _built := false
 
 ## Build the catalog as soon as the class is loaded, so even direct reads of the
@@ -30,6 +32,7 @@ static func _ensure() -> void:
 	_build_goods()
 	_build_tiers()
 	_build_buildings()
+	_build_research()
 	_assert_cascade()
 	_assert_need_goods_exist()
 
@@ -62,6 +65,14 @@ static func next_tier_id(id: String) -> String:
 	if i >= 0 and i + 1 < tier_order.size():
 		return tier_order[i + 1]
 	return ""
+
+static func research_perk(id: String) -> ResearchDef:
+	_ensure()
+	return research_perks.get(id, null)
+
+static func all_research() -> Array:
+	_ensure()
+	return research_order
 
 ## Buildings placeable given the set of unlocked tier ids (always includes ungated).
 static func unlocked_buildings(unlocked_tiers: Array) -> Array:
@@ -226,6 +237,44 @@ static func _assert_need_goods_exist() -> void:
 			for good_id in d:
 				assert(goods.has(good_id),
 					"Tier %s references undefined good '%s'" % [tid, good_id])
+
+# ── research (Creativity perks) ──────────────────────────────────────────────
+
+static func _rp(id: String, name: String, tree: String, cost: int, effect: Dictionary,
+		desc: String, repeatable := false) -> void:
+	research_perks[id] = ResearchDef.new(id, name, tree, cost, effect, desc, repeatable)
+	research_order.append(id)
+
+static func _build_research() -> void:
+	# Per-tier trees (available once the tier is reached) + an endless Infinite tree.
+	_rp("sawmillry", "Sawmillry", "pioneers", 15,
+		{"type": "prod_mult", "key": "plank", "value": 1.0},
+		"Sawmills double their plank output.")
+	_rp("axehammer", "Axehammer", "pioneers", 25,
+		{"type": "build_cost_flat", "key": "wood", "value": 3.0},
+		"Every building costs 3 less Wood.")
+	_rp("slack_time", "Slack Time", "colonists", 35,
+		{"type": "creativity_mult", "value": 0.20},
+		"+20% Creativity generation.")
+	_rp("optimized_accounting", "Optimized Accounting", "colonists", 40,
+		{"type": "tax_mult", "value": 0.10},
+		"Inhabitants pay +10% Coin.")
+	_rp("thrifty_masons", "Thrifty Masons", "townsmen", 50,
+		{"type": "build_cost_flat", "key": "plank", "value": 5.0},
+		"Every building costs 5 less Plank.")
+	_rp("guild_methods", "Guild Methods", "townsmen", 60,
+		{"type": "prod_mult_all", "value": 0.10},
+		"All workshops produce +10%.")
+	_rp("fine_accounting", "Fine Accounting", "merchants", 90,
+		{"type": "tax_mult", "value": 0.15},
+		"Inhabitants pay a further +15% Coin.")
+	# Infinite tree — repeatable, escalating cost.
+	_rp("infinite_industry", "Infinite Industry", "infinite", 80,
+		{"type": "prod_mult_all", "value": 0.05},
+		"+5% to all production. Repeatable; cost rises each rank.", true)
+	_rp("infinite_wealth", "Infinite Wealth", "infinite", 80,
+		{"type": "tax_mult", "value": 0.05},
+		"+5% Coin from inhabitants. Repeatable; cost rises each rank.", true)
 
 # ── buildings & recipes ────────────────────────────────────────────────────────
 

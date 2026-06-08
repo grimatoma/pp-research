@@ -55,6 +55,14 @@ func _run_capture() -> void:
 		print("CAPTURE_OK ", ProjectSettings.globalize_path(path))
 	else:
 		print("CAPTURE_FAIL")
+	# Second shot: the research panel, to verify it renders and showcase it.
+	Game.sim.creativity = 250.0
+	Game.sim.unlocked_tiers = ["pioneers", "colonists", "townsmen", "merchants"]
+	_hud.call("open_research")
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/research.png")
+	print("CAPTURE_RESEARCH_OK")
 	get_tree().quit()
 
 ## Auto-place a demo settlement near the Kontor — also a placement smoke test on a

@@ -28,6 +28,9 @@ func _initialize() -> void:
 	_test_save_preserves_timers()
 	_test_mapgen_deterministic()
 	_test_new_game_places_kontor()
+	_test_creativity_and_research()
+	_test_research_gating_and_repeatable()
+	_test_research_save_roundtrip()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -315,3 +318,57 @@ func _test_new_game_places_kontor() -> void:
 			if connected_ok:
 				break
 	_check(connected_ok, "a building placed near the Kontor is connected")
+
+func _test_creativity_and_research() -> void:
+	var isl := _grid_island()
+	var sim := _sim_with(isl)
+	_place(isl, "kontor", Vector2i(1, 1))
+	var hut := _place(isl, "pioneer_hut", Vector2i(4, 4))
+	hut.residents = 10
+	isl.stockpile = {"fish": 1e6, "water": 1e6}
+	sim.advance(60.0)
+	_check(sim.creativity > 0.0, "population generates Creativity (%.1f)" % sim.creativity)
+	# Research Axehammer (Pioneers tree, −3 Wood on build costs).
+	sim.unlocked_tiers = ["pioneers"]
+	sim.creativity = 100.0
+	var axe := Database.research_perk("axehammer")
+	_check(sim.can_research(axe), "axehammer researchable (tree unlocked + Creativity)")
+	_check(sim.research(axe), "researched axehammer")
+	var wh := Database.building("warehouse")  # base cost 20 Wood
+	_check(is_equal_approx(sim.effective_cost(wh).get("wood", 0.0), 17.0),
+		"axehammer cuts Warehouse wood cost 20→17")
+	# Sawmillry doubles plank output.
+	sim.creativity = 100.0
+	sim.research(Database.research_perk("sawmillry"))
+	_check(is_equal_approx(sim._prod_mult("plank"), 2.0), "sawmillry doubles plank output")
+
+func _test_research_gating_and_repeatable() -> void:
+	var sim := _sim_with(_grid_island())
+	sim.unlocked_tiers = ["pioneers"]
+	sim.creativity = 10000.0
+	_check(not sim.research_available(Database.research_perk("fine_accounting")),
+		"merchant-tree perk is locked until Merchants reached")
+	var inf := Database.research_perk("infinite_industry")
+	_check(sim.research_available(inf), "infinite-tree perk is always available")
+	var c0 := sim.research_cost(inf)
+	sim.research(inf)
+	var c1 := sim.research_cost(inf)
+	_check(c1 > c0, "repeatable perk cost escalates (%d → %d)" % [c0, c1])
+	_check(sim.research_rank("infinite_industry") == 1, "repeatable rank incremented")
+	var w := Database.research_perk("infinite_wealth")
+	sim.research(w)
+	sim.research(w)
+	_check(is_equal_approx(sim._tax_mult(), 1.10), "two ranks of Infinite Wealth → +10% tax")
+
+func _test_research_save_roundtrip() -> void:
+	var sim := _sim_with(_grid_island())
+	sim.creativity = 42.0
+	sim.researched = ["axehammer"]
+	sim._recompute_mods()
+	var sim2 := WorldSim.new()
+	sim2.from_dict(sim.to_dict())
+	_check(is_equal_approx(sim2.creativity, 42.0), "creativity persists across save")
+	_check(sim2.researched.has("axehammer"), "researched perks persist across save")
+	var wh := Database.building("warehouse")
+	_check(is_equal_approx(sim2.effective_cost(wh).get("wood", 0.0), 17.0),
+		"research modifiers reapplied on load")
