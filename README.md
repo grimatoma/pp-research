@@ -12,7 +12,9 @@ the original game). Art is generated with [PixelLab](https://pixellab.ai).
 
 ## Status
 
-Playable temperate-region vertical slice:
+**Feature-complete vertical slice of the full PP2 loop** — economy, military,
+multi-island world, and the roguelite prestige meta all wired together and
+validated by a headless end-to-end playthrough test. Highlights:
 
 - **Procedural islands** — seeded `MapGen` (grass / beach / ocean / forest / mountain /
   river). Deterministic for a fixed seed.
@@ -38,13 +40,22 @@ Playable temperate-region vertical slice:
   luxuries, so it never stalls); spend it on a tree of perks that boost the economy
   (production multipliers, Coin tax, build-cost reductions, +Creativity) plus a
   repeatable Infinite tree. Perks gate by reached tier; full HUD panel.
-- **Auto-battle resolver (M8 core)** — deterministic 3-phase (First/Normal/Last)
-  simultaneous-strike combat: strike abilities, crits (seeded → reproducible),
-  ranged-targeted-after-melee, Flank, win-if-all-enemies-die, and the duration formula.
+- **Military & expeditions (M8)** — satisfied houses muster Militia; weapon smiths +
+  training grounds trade militia & weapons up the unit ladder; Orc forts block buildable
+  land until conquered. Send an army and the battle resolves over wall-clock time via a
+  deterministic resolver (strike phases, Ranged/Flank, Splash/Trample, Bulletproof/Spiky,
+  and boss Armageddon/Lightning/Revive/Summon). Clearing a warchief grants Cartography.
+- **Multi-island world (M6/M7)** — spend Cartography to charter procedural islands across
+  climate regions (temperate/tropical/northern, research-gated); conquer them, then keep &
+  settle, hand to the Paragons for Favor, or turn in for Coin. Ships run trade routes that
+  move goods (never people) between islands — so a Merchant city must import tropical
+  coffee/sugar, exactly as PP2 intends.
+- **Prestige roguelite (M10)** — grow ~30 Paragons, found a Palace, and complete its five
+  Favor-fuelled stages for a permanent Reputation point. Reputation (saved to a meta file
+  that survives restarts) unlocks Custodians — run-modifiers you pick at New Game+.
 
-Ships/trade-routes, Cartography discovery, the combat *expedition* flow (army en route +
-Orc camps on the map + recruitment), and the Palace→Reputation→Custodian prestige loop
-are specced in the research doc and queued for later milestones.
+The DLC magic track (Mana/Elder Mana), distinct Northern production chains, the 12
+Challenges, and per-region tilesets remain as future polish.
 
 ## Architecture
 
@@ -71,15 +82,23 @@ Open `project.godot` in **Godot 4.6+**, or:
 ```bash
 godot --path . --import                                  # first time: register classes
 godot --path .                                           # play
-godot --headless --path . --script res://tests/run_economy_tests.gd   # economy tests (exit 0/1)
-godot --headless --path . --script res://tests/run_combat_tests.gd    # combat tests (exit 0/1)
+godot --headless --path . --script res://tests/run_economy_tests.gd     # economy/world/prestige (exit 0/1)
+godot --headless --path . --script res://tests/run_combat_tests.gd      # combat resolver (exit 0/1)
+godot --headless --path . --script res://tests/run_playthrough_test.gd  # full end-to-end loop (exit 0/1)
 ```
 
 ## Tests
 
-- `tests/run_economy_tests.gd` — 47 checks: catalog integrity, the cascade invariant,
+- `tests/run_economy_tests.gd` — 109 checks: catalog integrity, the cascade invariant,
   production + input consumption, connectivity gating, growth/emigration, coin payout,
   the upgrade gate, save round-trip, offline-catch-up determinism, deterministic mapgen,
-  Kontor placement, and the full Creativity research system.
-- `tests/run_combat_tests.gd` — 17 checks: golden determinism, win-on-mutual-death,
-  ranged protection, stronger-army-wins, and the duration formula.
+  Creativity research, **the whole production tree being producible to Paragons**,
+  recruitment, Orc-camp generation/blocking, expeditions & warchief rewards, Cartography
+  discovery, region gating, settle/handover/turn-in, trade routes, and the Palace →
+  Reputation → Custodian → New Game+ prestige loop.
+- `tests/run_combat_tests.gd` — 22 checks: golden determinism (incl. with boss abilities),
+  win-on-mutual-death, ranged protection, stronger-army-wins, the duration formula, and
+  Trample/Bulletproof resolution.
+- `tests/run_playthrough_test.gd` — 19 checks: one WorldSim driven through the *entire*
+  game loop (economy → recruit → conquer → Cartography → discover → settle → trade →
+  Paragons → Palace → Reputation → New Game+) to prove the systems compose.

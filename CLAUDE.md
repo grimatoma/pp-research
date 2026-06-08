@@ -43,8 +43,9 @@ Because `Database` and `WorldSim` need no autoloads, `tests/run_economy_tests.gd
 ```bash
 godot --path . --import                                              # register class_names (first run / after new scripts)
 godot --path .                                                       # play
-godot --headless --path . --script res://tests/run_economy_tests.gd  # economy tests, exit 0/1
-godot --headless --path . --script res://tests/run_combat_tests.gd   # combat tests, exit 0/1
+godot --headless --path . --script res://tests/run_economy_tests.gd     # economy/world/prestige, exit 0/1
+godot --headless --path . --script res://tests/run_combat_tests.gd      # combat resolver, exit 0/1
+godot --headless --path . --script res://tests/run_playthrough_test.gd  # full end-to-end loop, exit 0/1
 godot --path . -- --capture                                          # windowed: build demo, screenshot → docs/screenshot.png
 ```
 
@@ -81,12 +82,29 @@ is missing, so the game always runs. Terrain uses the 16-tile Wang autotile shee
 
 ## Roadmap (per the research spec's milestones)
 
-Done: M1 sim core + grid · M2 range logistics · M3 population & cascade · M4 production
-chains · M5 coin economy · M9 Creativity research · M8 *core* (deterministic battle
-resolver + unit catalog in `scripts/systems/Battle.gd` + `Database._build_units`).
-Next: M8 expedition flow (army-over-time, Orc camps on the map, population→unit
-recruitment) · M6 ships + trade routes + regions · M7 Cartography discovery · M10
-Palace→Reputation→Custodian prestige. See `docs/pp2-spec-extract.json`.
+**All core milestones implemented.** M1 sim core + grid · M2 range logistics · M3
+population & cascade · M4 production chains (now complete to Paragons — copper/gold/
+grape/paper + tropical imports) · M5 coin economy · M6 ships + trade routes + regions ·
+M7 Cartography discovery · M8 full combat + expeditions (recruitment, Orc camps,
+army-over-time, warchief→Cartography) · M9 Creativity research · M10 Palace→Reputation→
+Custodian prestige (New Game+). The battle resolver handles strike phases, Ranged/Flank,
+Splash/Trample, Bulletproof/Spiky, and boss Armageddon/Lightning/Revive/Summon.
+
+Remaining polish (not blockers): distinct northern-region production chains, DLC magic
+track (Mana/Elder Mana), the 12 Challenges, bribery/more custodians, per-region tilesets.
+See `docs/pp2-spec-extract.json`.
+
+## Systems map (where each milestone lives)
+
+| System | Key code |
+|---|---|
+| Military units / training / weapons | `Database._build_goods`/`_build_buildings` (military category), `_build_units` |
+| Orc camps (block land, conquerable) | `scripts/data/OrcCamp.gd`, `MapGen._add_camps` |
+| Expeditions (send army → battle over time) | `WorldSim.send_expedition`/`_advance_expeditions` |
+| Multi-island world / discovery / regions | `WorldSim` (discoveries, `start_discovery`, `settle_island`, `handover_to_paragons`) |
+| Ships + trade routes | `scripts/data/ShipDef.gd`, `WorldSim.add_trade_route`/`_advance_trade` |
+| Palace / Reputation / Custodians | `scripts/data/CustodianDef.gd`, `WorldSim` (palace + prestige), `SaveManager` meta |
+| UI panels (World/Military/Prestige) | `scenes/HUD.gd` |
 
 ## Engineering rules
 

@@ -132,6 +132,7 @@ func _build_demo_layout() -> void:
 		"fishery", "well", "tavern", "lumberjack", "lumberjack", "sawmill",
 		"apple_orchard", "cider_maker", "piggery", "sausage_maker",
 		"wheat_farm", "flour_mill", "bakery", "sheep_farm", "weaver", "cattle_ranch",
+		"barracks", "archery_range", "weaponsmith", "shipyard",
 		"pioneer_hut", "pioneer_hut", "colonist_house", "colonist_house", "townsmen_house",
 	]
 	for id in plan:
