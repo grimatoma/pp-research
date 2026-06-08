@@ -18,6 +18,7 @@ static var tiers: Dictionary = {}        ## id -> PopTierDef
 static var tier_order: Array[String] = [] ## tier ids, lowest → highest
 static var research_perks: Dictionary = {} ## id -> ResearchDef
 static var research_order: Array[String] = [] ## perk ids, catalog order
+static var units: Dictionary = {}        ## id -> UnitDef
 static var _built := false
 
 ## Build the catalog as soon as the class is loaded, so even direct reads of the
@@ -33,6 +34,7 @@ static func _ensure() -> void:
 	_build_tiers()
 	_build_buildings()
 	_build_research()
+	_build_units()
 	_assert_cascade()
 	_assert_need_goods_exist()
 
@@ -73,6 +75,10 @@ static func research_perk(id: String) -> ResearchDef:
 static func all_research() -> Array:
 	_ensure()
 	return research_order
+
+static func unit(id: String) -> UnitDef:
+	_ensure()
+	return units.get(id, null)
 
 ## Buildings placeable given the set of unlocked tier ids (always includes ungated).
 static func unlocked_buildings(unlocked_tiers: Array) -> Array:
@@ -275,6 +281,30 @@ static func _build_research() -> void:
 	_rp("infinite_wealth", "Infinite Wealth", "infinite", 80,
 		{"type": "tax_mult", "value": 0.05},
 		"+5% Coin from inhabitants. Repeatable; cost rises each rank.", true)
+
+# ── military units (HP/Atk/Tier/abilities from dirm2/parpio-battle) ───────────
+
+static func _u(id: String, name: String, hp: int, atk: int, tier: int,
+		abilities: Array[String], boss := false) -> void:
+	units[id] = UnitDef.new(id, name, hp, atk, tier, abilities, boss)
+
+static func _build_units() -> void:
+	# Player units (recruited from population + training buildings).
+	_u("militia", "Militia", 15, 5, 1, [])
+	_u("archer", "Archer", 10, 20, 1, ["Ranged"])
+	_u("footsoldier", "Footsoldier", 40, 15, 1, [])
+	_u("longbow_archer", "Longbow Archer", 10, 15, 2, ["Double", "Ranged"])
+	_u("cavalry", "Cavalry", 5, 5, 2, ["First", "Flank"])
+	_u("knight", "Knight", 90, 20, 3, [])
+	_u("crossbowman", "Crossbowman", 15, 90, 3, ["Ranged"])
+	_u("cuirassier", "Cuirassier", 120, 10, 4, ["First"])
+	_u("cannoneer", "Cannoneer", 60, 80, 4, ["Last", "Ranged", "Flank", "Trample"])
+	# Orc enemies (generic camp units + a sample warchief).
+	_u("orcling", "Orcling", 10, 4, 1, [])
+	_u("orc_grunt", "Orc Grunt", 30, 10, 1, [])
+	_u("orc_archer", "Orc Archer", 15, 14, 1, ["Ranged"])
+	_u("orc_brute", "Orc Brute", 80, 22, 2, [])
+	_u("bula", "Warchief Bula", 2500, 150, 100, ["Ranged", "Last", "Splash"], true)
 
 # ── buildings & recipes ────────────────────────────────────────────────────────
 
