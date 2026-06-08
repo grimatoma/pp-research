@@ -637,14 +637,15 @@ static func _build_buildings() -> void:
 		"wine", 1.0, 720.0, {"grape": 2}, "paragons", "", {"marble": 20}))
 
 	# ── tropical plantations (region-gated; their goods are imported to temperate) ─
+	var plantation := "res://assets/art/buildings/plantation.png"
 	_bld(_producer("coffee_plantation", "Coffee Plantation", "raw", Color("6f4e37"), Vector2i(2, 2),
-		"coffee", 1.0, 300.0, {}, "townsmen", "grass", {"wood": 15}, "", "tropical"))
+		"coffee", 1.0, 300.0, {}, "townsmen", "grass", {"wood": 15}, plantation, "tropical"))
 	_bld(_producer("sugar_plantation", "Sugar Plantation", "raw", Color("f0ead8"), Vector2i(2, 2),
-		"sugar", 1.0, 240.0, {}, "townsmen", "grass", {"wood": 15}, "", "tropical"))
+		"sugar", 1.0, 240.0, {}, "townsmen", "grass", {"wood": 15}, plantation, "tropical"))
 	_bld(_producer("cacao_plantation", "Cacao Plantation", "raw", Color("6f4e37"), Vector2i(2, 2),
-		"cacao", 1.0, 360.0, {}, "merchants", "grass", {"wood": 15}, "", "tropical"))
+		"cacao", 1.0, 360.0, {}, "merchants", "grass", {"wood": 15}, plantation, "tropical"))
 	_bld(_producer("tobacco_plantation", "Tobacco Plantation", "raw", Color("8a7b3a"), Vector2i(2, 2),
-		"tobacco", 1.0, 360.0, {}, "merchants", "grass", {"wood": 15}, "", "tropical"))
+		"tobacco", 1.0, 360.0, {}, "merchants", "grass", {"wood": 15}, plantation, "tropical"))
 
 	# ── weapon smiths (feed the training buildings; recipes per spec recruiting) ─
 	_bld(_producer("bowyer", "Bowyer", "military", Color("9a7b4f"), Vector2i(2, 2),
