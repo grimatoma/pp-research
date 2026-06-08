@@ -1,0 +1,93 @@
+# Build the Godot Web (HTML5) export and publish it to GitHub Pages.
+#
+# Pioneer Isles is a pure Godot 4.6.2 / GDScript game, so this repo deploys the
+# Web export straight to Pages — no bundler step. The "Web" preset is nothreads
+# (export_presets.cfg → variant/thread_support=false), so the build needs no
+# SharedArrayBuffer and therefore no cross-origin-isolation (COOP/COEP) headers:
+# it runs on plain GitHub Pages as-is. Godot's Web export references its assets
+# with relative URLs, so the same files work unchanged under the
+# /pp-research/ project-site sub-path — no base-path override needed.
+#
+# Live URL: https://grimatoma.github.io/pp-research/
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least-privilege token for the Pages deployment.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deploys at once; let an in-flight one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: '4.6.2'
+
+jobs:
+  build:
+    name: Web (HTML5) export
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Godot ${{ env.GODOT_VERSION }} + export templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: false
+          include-templates: true
+
+      # First run builds .godot/ (import cache + global class_name registry).
+      # MUST precede the export so every class_name resolves.
+      - name: Import project
+        run: godot --headless --path . --import
+
+      # Godot 4.6.2's headless Web export reliably segfaults on engine SHUTDOWN
+      # (exit 134) AFTER it has finished writing the export output: the pack
+      # reaches "[ DONE ] savepack" and the wasm/js/html wrapper is written,
+      # then the crash happens during teardown. This is a known Godot teardown
+      # crash, not an export failure, so we must NOT let the non-zero exit fail
+      # the job. Success is gated on the artifacts actually existing (next
+      # step), so a genuine export failure (missing/incomplete output) still
+      # fails the build.
+      - name: Export Web build (tolerate known shutdown crash)
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --export-release "Web" "$GITHUB_WORKSPACE/build/web/index.html" || rc=$?
+          echo "godot export exited with code ${rc:-0} (non-zero = known 4.6.2 teardown segfault; gated on artifacts below)"
+
+      # The REAL export gate, independent of the export command's exit code:
+      # the load-bearing Web build files must all be on disk.
+      - name: Sanity-check export output
+        run: |
+          echo "Web export contents:"
+          ls -la build/web
+          test -f build/web/index.html
+          test -f build/web/index.js
+          test -f build/web/index.wasm
+          test -f build/web/index.pck
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

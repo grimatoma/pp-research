@@ -2,7 +2,8 @@
 .godot/
 .import/
 export.cfg
-export_presets.cfg
+# NOTE: export_presets.cfg IS committed — it is project config (the Web export
+# preset), needed by the GitHub Pages deploy workflow. Do not ignore it.
 
 # Mono/.NET (unused, GDScript project) — harmless guards
 .mono/
