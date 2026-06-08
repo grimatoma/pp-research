@@ -346,7 +346,7 @@ func _on_notify(text: String, level: String) -> void:
 		"warn": _toast.add_theme_color_override("font_color", Color("e0913a"))
 		_: _toast.add_theme_color_override("font_color", Color("e8e8e8"))
 	_toast.modulate.a = 1.0
-	_toast_time = 2.5
+	_toast_time = 4.0
 
 func _process(delta: float) -> void:
 	if _toast_time > 0.0:

@@ -32,6 +32,13 @@ func _ready() -> void:
 
 	if "--capture" in OS.get_cmdline_args() or "--capture" in OS.get_cmdline_user_args():
 		_run_capture.call_deferred()
+		return
+	# Onboarding hint on a fresh run (only the starting Kontor exists).
+	var isl := Game.sim.active_island()
+	if isl != null and isl.buildings.size() <= 1:
+		Game.sim.notify.emit(
+			"Welcome! Build a Fisherman's Hut and a Well near your Kontor, then Pioneer's Huts.",
+			"info")
 
 # ── headless-ish screenshot harness (run windowed with `-- --capture`) ──────────
 
