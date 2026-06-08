@@ -9,6 +9,7 @@ const ANY_LAND := -1  ## terrain_req sentinel: any of Constants.LAND_TERRAINS
 var id: String
 var display_name: String
 var category: String                 ## "house" | "food" | "raw" | "production" | "storage" | "civic"
+var region: String = ""              ## climate gate: "" = any | "temperate" | "tropical" | "northern"
 var terrain_req: int = ANY_LAND      ## Constants.Terrain value, or ANY_LAND
 var needs_coast: bool = false        ## must be adjacent to WATER (Kontor, shipyard)
 var size: Vector2i = Vector2i.ONE    ## footprint in tiles

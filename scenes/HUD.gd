@@ -17,6 +17,8 @@ var _military_panel: PanelContainer
 var _military_body: VBoxContainer
 var _deploy_camp: OrcCamp = null
 var _deploy_spins: Dictionary = {}  ## unit_id -> SpinBox
+var _world_panel: PanelContainer
+var _world_body: VBoxContainer
 var _stock_box: VBoxContainer
 var _build_box: HBoxContainer
 var _inspector: PanelContainer
@@ -43,11 +45,13 @@ func _ready() -> void:
 	_build_menu()
 	_build_research_panel()
 	_build_military_panel()
+	_build_world_panel()
 	_build_toast()
 	Game.sim.economy_ticked.connect(func(_d): _request_refresh())
 	Game.sim.notify.connect(_on_notify)
 	Game.sim.expedition_resolved.connect(func(_i, _c, _w): _refresh_military())
 	Game.sim.expedition_launched.connect(func(_i, _c): _refresh_military())
+	Game.sim.world_changed.connect(func(): _refresh_world())
 	Game.sim.tier_unlocked.connect(func(_t):
 		_rebuild_build_menu()
 		_refresh_research())
@@ -94,6 +98,13 @@ func _build_top_bar() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
+	var world_btn := Button.new()
+	world_btn.text = "World"
+	world_btn.pressed.connect(func():
+		_world_panel.visible = not _world_panel.visible
+		if _world_panel.visible:
+			_refresh_world())
+	row.add_child(world_btn)
 	var military_btn := Button.new()
 	military_btn.text = "Military"
 	military_btn.pressed.connect(func():
@@ -154,6 +165,9 @@ func _refresh_stockpile() -> void:
 		if amt < 0.05:
 			continue
 		var gd := Database.good(id)
+		# Military units live in the garrison (Military panel), not the goods stockpile.
+		if gd != null and gd.category == "unit":
+			continue
 		var row := HBoxContainer.new()
 		var sw := ColorRect.new()
 		sw.color = gd.color if gd else Color.GRAY
@@ -197,9 +211,14 @@ func _rebuild_build_menu() -> void:
 		c.queue_free()
 	_build_buttons.clear()
 	var avail := Database.unlocked_buildings(Game.sim.unlocked_tiers)
+	var isl := Game.sim.active_island()
+	var region: String = isl.region if isl != null else "temperate"
 	for cat in CAT_ORDER:
 		var in_cat: Array = []
 		for b in avail:
+			# Region gate: climate-signature buildings only show on their region.
+			if b.region != "" and b.region != region:
+				continue
 			if b.category == cat:
 				in_cat.append(b)
 		if in_cat.is_empty():
@@ -468,6 +487,8 @@ func close_panels() -> void:
 		_research_panel.visible = false
 	if _military_panel:
 		_military_panel.visible = false
+	if _world_panel:
+		_world_panel.visible = false
 
 func _on_camp_selected(camp: OrcCamp) -> void:
 	_military_panel.visible = true
@@ -605,6 +626,243 @@ func _fmt_time(seconds: float) -> String:
 		return "%dm %ds" % [s / 60, s % 60]
 	return "%ds" % s
 
+# ── world panel (regions · discovery · islands · trade routes) ────────────────────
+
+var _disc_labels: Array = []  ## [{label:Label, disc:Dictionary}] for live countdowns
+
+func _build_world_panel() -> void:
+	_world_panel = PanelContainer.new()
+	_world_panel.anchor_left = 0.5
+	_world_panel.anchor_right = 0.5
+	_world_panel.anchor_top = 0.0
+	_world_panel.offset_top = 56
+	_world_panel.offset_left = -250
+	_world_panel.offset_right = 250
+	_world_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_world_panel.add_theme_stylebox_override("panel", _bg(Color(0.09, 0.11, 0.13, 0.98)))
+	_world_panel.visible = false
+	add_child(_world_panel)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(500, 500)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_world_body = VBoxContainer.new()
+	_world_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_world_body)
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 10)
+	m.add_child(scroll)
+	_world_panel.add_child(m)
+
+func open_world() -> void:
+	_world_panel.visible = true
+	_refresh_world()
+
+func _refresh_world() -> void:
+	if _world_panel == null or not _world_panel.visible:
+		return
+	_disc_labels.clear()
+	for c in _world_body.get_children():
+		c.queue_free()
+	var sim := Game.sim
+	_add_label(_world_body, "World — %d / %d islands settled" %
+		[sim.settled_island_count(), sim.island_limit()], 16)
+	_add_label(_world_body, "Regions: " + ", ".join(sim.unlocked_regions), 11,
+		Color(0.7, 0.78, 0.9))
+
+	# ── discovery ──
+	_add_label(_world_body, "Charter a new island", 13, Color(0.7, 0.78, 0.9))
+	var disc_row := HBoxContainer.new()
+	var region_opt := OptionButton.new()
+	for r in sim.unlocked_regions:
+		region_opt.add_item(String(r).capitalize())
+		region_opt.set_item_metadata(region_opt.item_count - 1, r)
+	disc_row.add_child(region_opt)
+	var pts := SpinBox.new()
+	pts.min_value = 0
+	pts.max_value = max(0, int(sim.currencies.get("cartography", 0.0)))
+	pts.prefix = "Carto "
+	pts.custom_minimum_size = Vector2(90, 0)
+	disc_row.add_child(pts)
+	var disc_btn := Button.new()
+	disc_btn.text = "Discover"
+	disc_btn.pressed.connect(func():
+		var region := String(region_opt.get_selected_metadata()) if region_opt.item_count > 0 else "temperate"
+		var res := sim.start_discovery(region, int(pts.value))
+		if not res.ok:
+			sim.notify.emit(res.reason, "warn")
+		_refresh_world())
+	disc_row.add_child(disc_btn)
+	_world_body.add_child(disc_row)
+	_add_label(_world_body, "More Cartography → bigger island, longer voyage (+10 min/point).",
+		10, Color(0.6, 0.65, 0.72))
+	for d in sim.discoveries:
+		var l := Label.new()
+		l.add_theme_font_size_override("font_size", 11)
+		l.add_theme_color_override("font_color", Color("e0c060"))
+		_world_body.add_child(l)
+		_disc_labels.append({"label": l, "disc": d})
+	_update_disc_labels()
+
+	# ── islands ──
+	_world_body.add_child(HSeparator.new())
+	_add_label(_world_body, "Islands", 13, Color(0.7, 0.78, 0.9))
+	for i in sim.islands.size():
+		_world_body.add_child(_make_island_row(i))
+
+	# ── trade routes ──
+	_world_body.add_child(HSeparator.new())
+	_add_label(_world_body, "Trade routes (ships move goods, never people)", 13,
+		Color(0.7, 0.78, 0.9))
+	for ri in sim.trade_routes.size():
+		_world_body.add_child(_make_route_row(ri))
+	if sim.islands.size() >= 2:
+		_world_body.add_child(_make_add_route_row())
+
+func _make_island_row(i: int) -> Control:
+	var sim := Game.sim
+	var isl: Island = sim.islands[i]
+	var box := VBoxContainer.new()
+	var status := "home" if i == 0 else ("settled" if isl.settled else "unsettled")
+	var hdr := "%s — %s · %s" % [isl.island_name, String(isl.region).capitalize(), status]
+	if i == sim.active_index:
+		hdr = "▶ " + hdr
+	_add_label(box, hdr, 13, Color("d7e0ea") if isl.settled else Color("e0c89a"))
+	var forts := isl.active_camps().size()
+	if forts > 0:
+		_add_label(box, "%d Orc fort(s) to clear" % forts, 11, Color("e08a8a"))
+	var btns := HBoxContainer.new()
+	if isl.settled or i == 0:
+		var view := Button.new()
+		view.text = "View"
+		view.disabled = (i == sim.active_index)
+		view.pressed.connect(func(): _switch_island(i))
+		btns.add_child(view)
+	if not isl.settled and i != 0:
+		if forts == 0:
+			var settle := Button.new()
+			settle.text = "Settle"
+			settle.pressed.connect(func():
+				var r := sim.settle_island(i)
+				if not r.ok: sim.notify.emit(r.reason, "warn")
+				_refresh_world())
+			btns.add_child(settle)
+			var hand := Button.new()
+			var sz: int = maxi(isl.width - 8, 12)
+			hand.text = "Hand over (+%d Favor)" % int(Database.favor_for_size(sz))
+			hand.pressed.connect(func():
+				sim.handover_to_paragons(i)
+				_refresh_world())
+			btns.add_child(hand)
+			var turn := Button.new()
+			turn.text = "Turn in (+Coin)"
+			turn.pressed.connect(func():
+				sim.turn_in_for_coins(i)
+				_refresh_world())
+			btns.add_child(turn)
+		else:
+			var go := Button.new()
+			go.text = "View & conquer"
+			go.pressed.connect(func(): _switch_island(i))
+			btns.add_child(go)
+	box.add_child(btns)
+	return box
+
+func _switch_island(i: int) -> void:
+	if i < 0 or i >= Game.sim.islands.size():
+		return
+	Game.sim.active_index = i
+	if island_view:
+		island_view._rebake()
+	var main := get_parent()
+	if main and main.has_method("center_on_active_island"):
+		main.center_on_active_island()
+	_rebuild_build_menu()
+	_refresh_world()
+	_refresh()
+
+func _make_route_row(ri: int) -> Control:
+	var sim := Game.sim
+	var r: Dictionary = sim.trade_routes[ri]
+	var row := HBoxContainer.new()
+	var fi := int(r.from)
+	var ti := int(r.to)
+	var fname: String = sim.islands[fi].island_name if fi < sim.islands.size() else "?"
+	var tname: String = sim.islands[ti].island_name if ti < sim.islands.size() else "?"
+	var lbl := Label.new()
+	lbl.text = "%s → %s: %s (%s)" % [fname, tname, Database.good_name(String(r.good)),
+		Database.ship(String(r.ship)).display_name if Database.ship(String(r.ship)) else r.ship]
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(lbl)
+	var rm := Button.new()
+	rm.text = "✕"
+	rm.pressed.connect(func():
+		sim.remove_trade_route(ri)
+		_refresh_world())
+	row.add_child(rm)
+	return row
+
+func _make_add_route_row() -> Control:
+	var sim := Game.sim
+	var box := VBoxContainer.new()
+	_add_label(box, "New route", 11, Color(0.7, 0.75, 0.85))
+	var row := HBoxContainer.new()
+	var from_opt := OptionButton.new()
+	var to_opt := OptionButton.new()
+	for i in sim.islands.size():
+		from_opt.add_item(sim.islands[i].island_name)
+		to_opt.add_item(sim.islands[i].island_name)
+	if sim.islands.size() >= 2:
+		to_opt.select(1)
+	row.add_child(from_opt)
+	var arrow := Label.new()
+	arrow.text = " → "
+	row.add_child(arrow)
+	row.add_child(to_opt)
+	box.add_child(row)
+	var row2 := HBoxContainer.new()
+	var good_opt := OptionButton.new()
+	for g in _tradeable_goods():
+		good_opt.add_item(Database.good_name(g))
+		good_opt.set_item_metadata(good_opt.item_count - 1, g)
+	row2.add_child(good_opt)
+	var ship_opt := OptionButton.new()
+	for sid in Database.all_ships():
+		var s := Database.ship(sid)
+		var x := "✚" if s.cross_region else "·"
+		ship_opt.add_item("%s %s (%dc)" % [x, s.display_name, s.coin_cost])
+		ship_opt.set_item_metadata(ship_opt.item_count - 1, sid)
+	row2.add_child(ship_opt)
+	var create := Button.new()
+	create.text = "Create"
+	create.pressed.connect(func():
+		var good := String(good_opt.get_selected_metadata())
+		var ship := String(ship_opt.get_selected_metadata())
+		var res := sim.add_trade_route(from_opt.selected, to_opt.selected, good, ship)
+		if not res.ok: sim.notify.emit(res.reason, "warn")
+		_refresh_world())
+	row2.add_child(create)
+	box.add_child(row2)
+	return box
+
+## Goods worth shipping: raws, materials, foods, luxuries, tools (not currencies/services/units).
+func _tradeable_goods() -> Array:
+	var out: Array = []
+	for gid in Database.goods:
+		var g: GoodDef = Database.goods[gid]
+		if g.category in ["currency", "service", "unit"]:
+			continue
+		out.append(gid)
+	out.sort_custom(func(a, b): return Database.good_name(a) < Database.good_name(b))
+	return out
+
+func _update_disc_labels() -> void:
+	for e in _disc_labels:
+		var d: Dictionary = e.disc
+		var remaining: float = maxf(0.0, float(d.total) - float(d.elapsed))
+		(e.label as Label).text = "⛵ Charting %s — %s remaining" % [
+			String(d.region).capitalize(), _fmt_time(remaining)]
+
 # ── toast / refresh / helpers ───────────────────────────────────────────────────
 
 func _build_toast() -> void:
@@ -633,6 +891,8 @@ func _process(delta: float) -> void:
 		_toast_time -= delta
 		if _toast_time <= 0.6:
 			_toast.modulate.a = maxf(0.0, _toast_time / 0.6)
+	if _world_panel and _world_panel.visible:
+		_update_disc_labels()
 	_refresh_accum += delta
 	if _refresh_accum >= 0.25:
 		_refresh_accum = 0.0

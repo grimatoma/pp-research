@@ -32,10 +32,19 @@ func _ready() -> void:
 func _on_world_changed() -> void:
 	queue_redraw()
 
+## Per-region terrain tint so tropical/northern islands read distinctly without a
+## separate tileset (temperate = neutral, tropical = lush, northern = cold/pale).
+const REGION_TINT := {
+	"temperate": Color(1, 1, 1),
+	"tropical": Color(1.06, 1.12, 0.82),
+	"northern": Color(0.82, 0.9, 1.05),
+}
+
 func _rebake() -> void:
 	var isl := Game.sim.active_island()
 	if isl != null:
 		_terrain_sprite.texture = TerrainRenderer.bake(isl)
+		_terrain_sprite.modulate = REGION_TINT.get(isl.region, Color.WHITE)
 	queue_redraw()
 
 # ── art loading (decorations / building sprites; tolerant of missing files) ─────

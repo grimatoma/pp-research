@@ -19,6 +19,8 @@ static var tier_order: Array[String] = [] ## tier ids, lowest → highest
 static var research_perks: Dictionary = {} ## id -> ResearchDef
 static var research_order: Array[String] = [] ## perk ids, catalog order
 static var units: Dictionary = {}        ## id -> UnitDef
+static var ships: Dictionary = {}        ## id -> ShipDef
+static var ship_order: Array[String] = [] ## ship ids, roster order
 static var _built := false
 
 ## Build the catalog as soon as the class is loaded, so even direct reads of the
@@ -35,6 +37,7 @@ static func _ensure() -> void:
 	_build_buildings()
 	_build_research()
 	_build_units()
+	_build_ships()
 	_assert_cascade()
 	_assert_need_goods_exist()
 
@@ -79,6 +82,29 @@ static func all_research() -> Array:
 static func unit(id: String) -> UnitDef:
 	_ensure()
 	return units.get(id, null)
+
+static func ship(id: String) -> ShipDef:
+	_ensure()
+	return ships.get(id, null)
+
+static func all_ships() -> Array:
+	_ensure()
+	return ship_order
+
+## The warchief boss that guards an island of the given size (12→34, step 2).
+static func warchief_for_size(size: int) -> String:
+	_ensure()
+	var roster := ["bula", "durz", "hork", "aguk", "kultan", "mazoga",
+		"durgash", "zrall", "krashek", "selzok", "saukron", "nurzhel"]
+	var idx: int = clampi((size - 12) / 2, 0, roster.size() - 1)
+	return roster[idx]
+
+## Favor earned by handing an island of `size` to the Paragons (spec formula, line 379):
+## Max(0,(Size-26)*16) + 2^((Min(Size,26)-10)/2 - 1).
+static func favor_for_size(size: int) -> float:
+	var linear: float = maxf(0.0, float(size - 26) * 16.0)
+	var expo: float = pow(2.0, float(mini(size, 26) - 10) / 2.0 - 1.0)
+	return linear + expo
 
 ## Buildings placeable given the set of unlocked tier ids (always includes ungated).
 static func unlocked_buildings(unlocked_tiers: Array) -> Array:
@@ -131,6 +157,16 @@ static func _build_goods() -> void:
 	_g("iron_ingot", "Iron Ingot", "material", Color("9aa0a8"))
 	_g("tools", "Tools", "material", Color("7a8088"))
 	_g("marble", "Marble", "raw", Color("eae6df"))
+	_g("copper_ore", "Copper Ore", "raw", Color("b87333"))
+	_g("copper_ingot", "Copper Ingot", "material", Color("d98a4a"))
+	_g("gold_ore", "Gold Ore", "raw", Color("d4af37"))
+	_g("gold_ingot", "Gold Ingot", "material", Color("f2c94c"))
+	_g("grape", "Grapes", "raw", Color("6b3fa0"))
+	_g("paper", "Paper", "material", Color("f4f0e6"))
+	# tropical raws (imported via trade routes from tropical isles)
+	_g("sugar", "Sugar", "raw", Color("f0ead8"))
+	_g("cacao", "Cacao", "raw", Color("6f4e37"))
+	_g("tobacco", "Tobacco", "raw", Color("8a7b3a"))
 	# population-need goods
 	_g("fish", "Fish", "food", Color("6fb7c4"))
 	_g("sausage", "Sausage", "food", Color("c4564a"))
@@ -161,7 +197,8 @@ static func _build_goods() -> void:
 	_g("wine", "Wine", "luxury", Color("722f37"))
 	# ── weapons (consumed by training buildings) ──────────────────────────────
 	_g("bow", "Bow", "tool", Color("9a7b4f"))
-	_g("sword", "Sword", "tool", Color("c0c4cc"))
+	_g("copper_sword", "Copper Sword", "tool", Color("d98a4a"))
+	_g("iron_sword", "Iron Sword", "tool", Color("c0c4cc"))
 	_g("cannon", "Cannon", "tool", Color("4a4a4a"))
 	# ── military units (stored as goods in the island garrison; no upkeep) ─────
 	# Recruited from population (militia) or trained from militia + a weapon.
@@ -290,6 +327,25 @@ static func _build_research() -> void:
 	_rp("fine_accounting", "Fine Accounting", "merchants", 90,
 		{"type": "tax_mult", "value": 0.15},
 		"Inhabitants pay a further +15% Coin.")
+	# Exploration / region unlocks (gate the multi-island world).
+	_rp("better_spyglasses", "Better Spyglasses", "colonists", 40,
+		{"type": "discovery_speed", "value": -0.35},
+		"Island discoveries are 35% faster.")
+	_rp("bannerman", "Bannerman", "colonists", 50,
+		{"type": "army_cap_bonus", "value": 50.0},
+		"Send up to +50 units in a single expedition.")
+	_rp("war_drums", "War Drums", "townsmen", 55,
+		{"type": "battle_time_cut", "value": 600.0},
+		"Battles finish 10 minutes sooner.")
+	_rp("tropical_islands", "Tropical Islands", "townsmen", 25,
+		{"type": "unlock_region", "value": "tropical"},
+		"Charter the Tropical region — coffee, sugar, cacao, tobacco.")
+	_rp("northern_islands", "Northern Islands", "merchants", 175,
+		{"type": "unlock_region", "value": "northern"},
+		"Charter the Northern region — a pure extraction frontier.")
+	_rp("better_relations", "Better Relations", "infinite", 200,
+		{"type": "island_slots", "value": 1.0},
+		"+1 island you can keep. Repeatable; cost rises each rank.", true)
 	# Infinite tree — repeatable, escalating cost.
 	_rp("infinite_industry", "Infinite Industry", "infinite", 80,
 		{"type": "prod_mult_all", "value": 0.05},
@@ -335,6 +391,26 @@ static func _build_units() -> void:
 	_u("selzok",  "Warchief Selzok",  10000, 250, 500, ["Summon", "Ranged", "Last", "Splash"], true)
 	_u("saukron", "Warchief Saukron", 15000, 3000, 540, ["Bulletproof", "Last", "Splash", "Spiky"], true)
 	_u("nurzhel", "Warchief Nur'Zhel", 75000, 1250, 600, ["Revive", "Ranged", "First", "Splash"], true)
+
+# ── ships (inter-island trade hulls; goods/h + Coin cost from the spec roster) ─
+
+static func _s(id: String, name: String, region: String, gph: float, cost: int, cross: bool) -> void:
+	ships[id] = ShipDef.new(id, name, region, gph, cost, cross)
+	ship_order.append(id)
+
+static func _build_ships() -> void:
+	# Temperate: region-locked starters (Cog, Caravel) then crossing hulls (Hulk+).
+	_s("cog", "Cog", "temperate", 60.0, 100, false)
+	_s("caravel", "Caravel", "temperate", 80.0, 150, false)
+	_s("hulk", "Hulk", "temperate", 180.0, 500, true)
+	_s("pinnace", "Pinnace", "temperate", 270.0, 750, true)
+	_s("galleon", "Galleon", "temperate", 540.0, 4000, true)
+	_s("clipper", "Clipper", "temperate", 800.0, 6000, true)
+	_s("schooner", "Schooner", "temperate", 1620.0, 20000, true)
+	_s("windjammer", "Windjammer", "temperate", 2500.0, 30000, true)
+	# Tropical region-locked starters.
+	_s("barque", "Barque", "tropical", 60.0, 100, false)
+	_s("skiff", "Skiff", "tropical", 80.0, 150, false)
 
 # ── buildings & recipes ────────────────────────────────────────────────────────
 
@@ -413,7 +489,7 @@ static func _build_buildings() -> void:
 
 	# ── mines (MOUNTAIN) ──────────────────────────────────────────────────────
 	_bld(_producer("coal_mine", "Coal Mine", "raw", Color("3a3a3a"), Vector2i(2, 2),
-		"coal", 1.0, 240.0, {}, "townsmen", "mountain", {"plank": 20}))
+		"coal", 1.0, 240.0, {}, "colonists", "mountain", {"plank": 20}))
 	_bld(_producer("salt_mine", "Salt Mine", "raw", Color("e0d8d0"), Vector2i(2, 2),
 		"rock_salt", 1.0, 240.0, {}, "townsmen", "mountain", {"plank": 20}))
 	_bld(_producer("limestone_quarry", "Limestone Quarry", "raw", Color("cfc8b8"), Vector2i(2, 2),
@@ -471,33 +547,87 @@ static func _build_buildings() -> void:
 	_bld(_producer("toolmaker", "Toolmaker", "production", Color("7a8088"), Vector2i(2, 2),
 		"tools", 4.0, 960.0, {"coal": 1, "iron_ingot": 2}, "merchants", "", {"plank": 30}))
 
-	# ── weapon smiths (feed the training buildings) ───────────────────────────
+	# ── copper line (Colonist metal → swords; → Cauldron that unblocks Merchants) ─
+	_bld(_producer("copper_mine", "Copper Mine", "raw", Color("b87333"), Vector2i(2, 2),
+		"copper_ore", 1.0, 240.0, {}, "colonists", "mountain", {"plank": 20}))
+	_bld(_producer("copper_smelter", "Copper Smelter", "production", Color("d98a4a"), Vector2i(2, 2),
+		"copper_ingot", 2.0, 720.0, {"coal": 1, "copper_ore": 2}, "colonists", "", {"plank": 25}))
+	_bld(_producer("cauldron_foundry", "Cauldron Foundry", "production", Color("5a5a5a"), Vector2i(2, 2),
+		"cauldron", 1.0, 480.0, {"copper_ingot": 1}, "townsmen", "", {"plank": 30}))
+	# ── gold line (Merchant jewellery) ────────────────────────────────────────
+	_bld(_producer("gold_mine", "Gold Mine", "raw", Color("d4af37"), Vector2i(2, 2),
+		"gold_ore", 1.0, 360.0, {}, "merchants", "mountain", {"plank": 30}))
+	_bld(_producer("gold_smelter", "Gold Smelter", "production", Color("f2c94c"), Vector2i(2, 2),
+		"gold_ingot", 1.0, 600.0, {"coal": 1, "gold_ore": 2}, "merchants", "", {"plank": 30}))
+	_bld(_producer("goldsmith", "Goldsmith", "production", Color("f2c94c"), Vector2i(2, 2),
+		"gold_jewelry", 1.0, 720.0, {"gold_ingot": 1}, "merchants", "", {"brick": 30}))
+	# ── Townsmen/Merchant luxuries (some need tropical imports: sugar/coffee) ───
+	_bld(_producer("jam_maker", "Jam Maker", "food", Color("c0392b"), Vector2i(2, 2),
+		"jam", 1.0, 240.0, {"apple": 2, "sugar": 1}, "townsmen", "", {"wood": 25}))
+	_bld(_producer("hatter", "Hatter", "production", Color("34495e"), Vector2i(2, 2),
+		"hat", 1.0, 480.0, {"fabric": 1, "leather": 1}, "merchants", "", {"brick": 30}))
+	_bld(_producer("patisserie", "Patisserie", "food", Color("e6b35a"), Vector2i(2, 2),
+		"pastry", 1.0, 360.0, {"flour": 1, "sugar": 1}, "merchants", "", {"brick": 30}))
+	_bld(_producer("caviary", "Caviar House", "food", Color("2c2c2c"), Vector2i(2, 2),
+		"caviar", 1.0, 720.0, {"fish": 2, "salt": 1}, "merchants", "coast", {"plank": 30}))
+	_bld(_producer("perfumery", "Perfumery", "production", Color("e784c4"), Vector2i(2, 2),
+		"perfume", 1.0, 600.0, {"tallow": 1, "sugar": 1}, "merchants", "", {"brick": 30}))
+	_bld(_producer("pipe_maker", "Pipe Maker", "production", Color("8d6e63"), Vector2i(2, 2),
+		"tobacco_pipe", 1.0, 480.0, {"tobacco": 1, "wood": 1}, "merchants", "", {"brick": 30}))
+	# ── Paragon luxuries (top of the cascade) ─────────────────────────────────
+	_bld(_producer("paper_mill", "Paper Mill", "production", Color("f4f0e6"), Vector2i(2, 2),
+		"paper", 2.0, 240.0, {"wood": 2}, "merchants", "river", {"plank": 30}))
+	_bld(_producer("vineyard", "Vineyard", "raw", Color("6b3fa0"), Vector2i(2, 2),
+		"grape", 1.0, 360.0, {}, "merchants", "grass", {"wood": 20}, "", "temperate"))
+	_bld(_producer("cobbler", "Cobbler", "production", Color("8a5a30"), Vector2i(2, 2),
+		"shoe", 1.0, 600.0, {"leather": 1, "fabric": 1}, "paragons", "", {"marble": 20}))
+	_bld(_producer("optician", "Optician", "production", Color("b0c4de"), Vector2i(2, 2),
+		"glasses", 1.0, 720.0, {"copper_ingot": 1, "coal": 1}, "paragons", "", {"marble": 20}))
+	_bld(_producer("printing_press", "Printing Press", "production", Color("6b4423"), Vector2i(2, 2),
+		"book", 1.0, 600.0, {"paper": 2}, "paragons", "", {"marble": 20}))
+	_bld(_producer("chocolatier", "Chocolatier", "food", Color("5b3a29"), Vector2i(2, 2),
+		"chocolate_candy", 1.0, 600.0, {"cacao": 1, "sugar": 1}, "paragons", "", {"marble": 20}))
+	_bld(_producer("couturier", "Couturier", "production", Color("7d3c98"), Vector2i(2, 2),
+		"noble_garment", 1.0, 900.0, {"fabric": 2, "perfume": 1}, "paragons", "", {"marble": 30}))
+	_bld(_producer("winery", "Winery", "food", Color("722f37"), Vector2i(2, 2),
+		"wine", 1.0, 720.0, {"grape": 2}, "paragons", "", {"marble": 20}))
+
+	# ── tropical plantations (region-gated; their goods are imported to temperate) ─
+	_bld(_producer("coffee_plantation", "Coffee Plantation", "raw", Color("6f4e37"), Vector2i(2, 2),
+		"coffee", 1.0, 300.0, {}, "townsmen", "grass", {"wood": 15}, "", "tropical"))
+	_bld(_producer("sugar_plantation", "Sugar Plantation", "raw", Color("f0ead8"), Vector2i(2, 2),
+		"sugar", 1.0, 240.0, {}, "townsmen", "grass", {"wood": 15}, "", "tropical"))
+	_bld(_producer("cacao_plantation", "Cacao Plantation", "raw", Color("6f4e37"), Vector2i(2, 2),
+		"cacao", 1.0, 360.0, {}, "merchants", "grass", {"wood": 15}, "", "tropical"))
+	_bld(_producer("tobacco_plantation", "Tobacco Plantation", "raw", Color("8a7b3a"), Vector2i(2, 2),
+		"tobacco", 1.0, 360.0, {}, "merchants", "grass", {"wood": 15}, "", "tropical"))
+
+	# ── weapon smiths (feed the training buildings; recipes per spec recruiting) ─
 	_bld(_producer("bowyer", "Bowyer", "military", Color("9a7b4f"), Vector2i(2, 2),
 		"bow", 1.0, 240.0, {"wood": 3, "yarn": 2}, "colonists", "",
-		{"wood": 20}, "res://assets/art/buildings/bowyer.png"))
-	_bld(_producer("weaponsmith", "Weaponsmith", "military", Color("c0c4cc"), Vector2i(2, 2),
-		"sword", 1.0, 240.0, {"iron_ingot": 1, "coal": 1}, "merchants", "",
-		{"plank": 30}, "res://assets/art/buildings/weaponsmith.png"))
+		{"wood": 20}, "res://assets/art/buildings/bowyer.png"))  # 3 Wood + 2 Fiber → Bow /4m
+	_bld(_producer("weaponsmith", "Weaponsmith", "military", Color("d98a4a"), Vector2i(2, 2),
+		"copper_sword", 1.0, 240.0, {"copper_ingot": 1}, "colonists", "",
+		{"plank": 25}, "res://assets/art/buildings/weaponsmith.png"))
+	_bld(_producer("armory", "Armory", "military", Color("c0c4cc"), Vector2i(2, 2),
+		"iron_sword", 1.0, 300.0, {"iron_ingot": 1}, "merchants", "", {"plank": 30}))
 	_bld(_producer("cannon_foundry", "Cannon Foundry", "military", Color("4a4a4a"), Vector2i(2, 2),
 		"cannon", 1.0, 480.0, {"tools": 1, "coal": 1}, "merchants", "river",
 		{"plank": 40}, "res://assets/art/buildings/cannon_foundry.png"))
 
-	# ── training grounds (militia + a weapon → a trained unit) ─────────────────
+	# ── training grounds (Militia + a weapon → a trained unit; cycles per spec) ─
 	_bld(_producer("archery_range", "Archery Range", "military", Color("8fae5d"), Vector2i(2, 2),
 		"archer", 1.0, 300.0, {"militia": 1, "bow": 1}, "colonists", "",
-		{"wood": 20}, "res://assets/art/buildings/archery_range.png"))
+		{"wood": 20}, "res://assets/art/buildings/archery_range.png"))  # 1 Militia + 1 Bow /5m
 	_bld(_producer("barracks", "Barracks", "military", Color("a05a3a"), Vector2i(2, 2),
-		"footsoldier", 1.0, 300.0, {"militia": 2, "plank": 1}, "colonists", "",
-		{"plank": 25, "coin": 50}, "res://assets/art/buildings/barracks.png"))
-	_bld(_producer("crossbow_range", "Crossbow Range", "military", Color("6f9bd1"), Vector2i(2, 2),
-		"crossbowman", 1.0, 480.0, {"militia": 2, "bow": 2}, "merchants", "",
-		{"plank": 30}, "res://assets/art/buildings/crossbow_range.png"))
-	_bld(_producer("knight_school", "Knight School", "military", Color("d0d4dc"), Vector2i(2, 2),
-		"knight", 1.0, 600.0, {"militia": 3, "sword": 1}, "merchants", "",
-		{"brick": 40, "coin": 200}, "res://assets/art/buildings/knight_school.png"))
-	_bld(_producer("cannoneer_school", "Cannoneer School", "military", Color("5a5a5a"), Vector2i(2, 2),
-		"cannoneer", 1.0, 900.0, {"militia": 4, "cannon": 1}, "paragons", "",
-		{"marble": 40, "tools": 20}, "res://assets/art/buildings/cannoneer_school.png"))
+		"footsoldier", 1.0, 600.0, {"militia": 2, "copper_sword": 1}, "colonists", "",
+		{"plank": 25, "coin": 50}, "res://assets/art/buildings/barracks.png"))  # 2 Mil + Copper Sword /10m
+	_bld(_producer("knight_school", "Knight Barracks", "military", Color("d0d4dc"), Vector2i(2, 2),
+		"knight", 1.0, 1200.0, {"militia": 4, "iron_sword": 1}, "merchants", "",
+		{"brick": 40, "coin": 200}, "res://assets/art/buildings/knight_school.png"))  # 4 Mil + Iron Sword /20m
+	_bld(_producer("cannoneer_school", "Cannoneer's School", "military", Color("5a5a5a"), Vector2i(2, 2),
+		"cannoneer", 1.0, 1800.0, {"militia": 6, "cannon": 1}, "paragons", "",
+		{"marble": 40, "tools": 20}, "res://assets/art/buildings/cannoneer_school.png"))  # 6 Mil + Cannon /30m
 
 	# ── naval (shipyard enables ships + inter-island trade routes) ─────────────
 	var shipyard := _make("shipyard", "Shipyard", "naval", Color("8a6a45"), Vector2i(3, 3))
@@ -531,12 +661,13 @@ static func _house(id: String, name: String, tier_id: String, cost: Dictionary,
 static func _producer(id: String, name: String, category: String, color: Color, size: Vector2i,
 		output: String, qty: float, time: float, inputs: Dictionary,
 		tier_unlock: String, terrain_tag: String, cost: Dictionary,
-		sprite := "") -> BuildingDef:
+		sprite := "", region := "") -> BuildingDef:
 	var b := _make(id, name, category, color, size)
 	b.recipe = RecipeDef.new(output, qty, time, inputs)
 	b.tier_unlock = tier_unlock
 	b.cost = cost
 	b.sprite_path = sprite
+	b.region = region
 	match terrain_tag:
 		"grass": b.terrain_req = T.GRASS
 		"forest": b.terrain_req = T.FOREST

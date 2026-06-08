@@ -37,6 +37,14 @@ func _initialize() -> void:
 	_test_warchief_grants_cartography()
 	_test_expedition_loss_keeps_camp()
 	_test_expedition_save_roundtrip()
+	_test_full_cascade_producible()
+	_test_region_gating()
+	_test_discovery_yields_island()
+	_test_island_limit()
+	_test_settle_island()
+	_test_handover_favor()
+	_test_trade_route()
+	_test_world_save_roundtrip()
 	print("──────────────────────────────────────────────────")
 	print("%d checks, %d failure(s)\n" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -470,3 +478,129 @@ func _test_expedition_save_roundtrip() -> void:
 	_check(sim2.active_island().camps.size() == 1, "camps persist across save")
 	_check(sim2.active_island().camps[0].army.get("orcling", 0) == 5,
 		"camp army persists across save")
+
+# ── world: regions · discovery · settle/handover · trade (M6/M7) ─────────────────
+
+func _test_full_cascade_producible() -> void:
+	# EVERY non-service good any tier needs must have a producer (population for Militia).
+	# This is the soft-lock guard for the whole Pioneers→Paragons cascade.
+	var produced := {"militia": true}
+	for id in Database.buildings:
+		var b: BuildingDef = Database.buildings[id]
+		if b.recipe != null and b.recipe.output != "":
+			produced[b.recipe.output] = true
+	var missing: Array = []
+	for tid in Database.all_tiers():
+		var t: PopTierDef = Database.tier(tid)
+		for g in t.all_need_goods():
+			var gd := Database.good(g)
+			if gd != null and gd.category == "service":
+				continue
+			if not produced.has(g) and not missing.has(g):
+				missing.append(g)
+	_check(missing.is_empty(), "every tier need-good is producible (missing: %s)" % str(missing))
+
+func _test_region_gating() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1)
+	_check(not sim.can_discover("tropical", 0).ok, "Tropical locked before research")
+	sim.unlocked_tiers = ["pioneers", "colonists", "townsmen"]
+	sim.creativity = 100.0
+	sim.research(Database.research_perk("tropical_islands"))
+	_check(sim.unlocked_regions.has("tropical"), "researching Tropical Islands unlocks the region")
+	_check(sim.can_discover("tropical", 0).ok, "can discover Tropical after unlock")
+
+func _test_discovery_yields_island() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1337)
+	var n0 := sim.islands.size()
+	sim.currencies["cartography"] = 3.0
+	var res := sim.start_discovery("temperate", 2)
+	_check(res.ok, "discovery launches when affordable")
+	_check(is_equal_approx(sim.currencies.cartography, 1.0), "discovery spends 2 Cartography")
+	_check(sim.discoveries.size() == 1, "one voyage in flight")
+	sim.advance(sim.discoveries[0].total + 5.0)
+	_check(sim.islands.size() == n0 + 1, "voyage yields a new island")
+	var nw: Island = sim.islands[n0]
+	_check(nw.discovered and not nw.settled, "new island is discovered but not yet settled")
+	_check(not nw.active_camps().is_empty(), "discovered island has Orc forts")
+	var has_boss := false
+	for c in nw.camps:
+		if c.boss != "":
+			has_boss = true
+	_check(has_boss, "discovered island has a warchief fort")
+
+func _test_island_limit() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1)  # home island counts as 1 settled; base limit 3
+	sim.currencies["cartography"] = 99.0
+	_check(sim.start_discovery("temperate", 0).ok, "discovery 1 within limit")
+	_check(sim.start_discovery("temperate", 0).ok, "discovery 2 within limit")
+	_check(not sim.start_discovery("temperate", 0).ok, "discovery 3 blocked by island limit")
+
+func _test_settle_island() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1)
+	var isl := MapGen.generate(20, 20, 5, "temperate", 0, "")  # pacified (no camps)
+	isl.discovered = true
+	isl.settled = false
+	sim.islands.append(isl)
+	var idx := sim.islands.size() - 1
+	var res := sim.settle_island(idx)
+	_check(res.ok and isl.settled, "settle a pacified discovered island")
+	var has_kontor := false
+	for pb in isl.buildings:
+		if pb.building_id == "kontor":
+			has_kontor = true
+	_check(has_kontor, "a settled island receives a coastal Kontor")
+
+func _test_handover_favor() -> void:
+	_check(is_equal_approx(Database.favor_for_size(26), 128.0),
+		"favor_for_size(26) = 128 (spec formula)")
+	var sim := WorldSim.new()
+	sim.new_game(1)
+	var isl := MapGen.generate(34, 34, 9, "temperate", 0, "")  # size 26
+	isl.discovered = true
+	sim.islands.append(isl)
+	var idx := sim.islands.size() - 1
+	var n0 := sim.islands.size()
+	var f0: float = sim.currencies.get("favor", 0.0)
+	var res := sim.handover_to_paragons(idx)
+	_check(res.ok, "handover succeeds on a pacified island")
+	_check(sim.currencies.get("favor", 0.0) > f0, "handover grants Favor")
+	_check(sim.islands.size() == n0 - 1, "handed-over island leaves the world")
+
+func _test_trade_route() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1)
+	var dst := MapGen.generate(20, 20, 5, "temperate", 0, "")
+	dst.settled = true
+	sim.islands.append(dst)
+	var home := sim.islands[0]
+	home.stockpile["wood"] = 1000.0
+	# Drop a Shipyard onto the home island (bypass coast check for the test).
+	home.place(Database.building("shipyard"), Vector2i(2, 2))
+	sim.currencies["coin"] = 1000.0
+	var res := sim.add_trade_route(0, 1, "wood", "cog")
+	_check(res.ok, "trade route created with a Cog (%s)" % res.reason)
+	sim.advance(3600.0)  # one hour at 60 goods/h
+	_check(dst.qty("wood") > 50.0, "Cog ships ~60 wood/h to the destination (%.0f)" % dst.qty("wood"))
+	# Cross-region requires a crossing hull.
+	var trop := MapGen.generate(20, 20, 6, "tropical", 0, "")
+	trop.settled = true
+	sim.islands.append(trop)
+	var cross := sim.add_trade_route(0, 2, "wood", "cog")
+	_check(not cross.ok, "a Cog cannot cross into another region")
+
+func _test_world_save_roundtrip() -> void:
+	var sim := WorldSim.new()
+	sim.new_game(1)
+	sim.unlocked_regions = ["temperate", "tropical"]
+	sim.currencies["cartography"] = 5.0
+	sim.start_discovery("temperate", 1)
+	sim.trade_routes.append({"from": 0, "to": 0, "good": "wood", "ship": "cog", "rate": 60.0})
+	var sim2 := WorldSim.new()
+	sim2.from_dict(sim.to_dict())
+	_check(sim2.unlocked_regions.has("tropical"), "unlocked regions persist")
+	_check(sim2.discoveries.size() == 1, "in-flight discovery persists")
+	_check(sim2.trade_routes.size() == 1, "trade routes persist")

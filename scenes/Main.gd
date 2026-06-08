@@ -80,6 +80,19 @@ func _run_capture() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://docs/military.png")
 	print("CAPTURE_MILITARY_OK")
+	# Fourth shot: the World panel with a discovered island + region access.
+	_hud.call("close_panels")
+	Game.sim.unlocked_regions = ["temperate", "tropical"]
+	Game.sim.currencies["cartography"] = 6.0
+	Game.sim.start_discovery("temperate", 1)
+	Game.sim.advance(Game.sim.discoveries[0].total + 5.0)  # complete it
+	Game.sim.currencies["cartography"] = 4.0
+	Game.sim.start_discovery("tropical", 2)  # one in-flight for the countdown
+	_hud.call("open_world")
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/world.png")
+	print("CAPTURE_WORLD_OK")
 	get_tree().quit()
 
 func _frame_whole_island() -> void:
@@ -88,6 +101,13 @@ func _frame_whole_island() -> void:
 		return
 	_cam.position = Vector2(isl.width, isl.height) * TILE * 0.5
 	_cam.zoom = Vector2(0.62, 0.62)
+
+## Re-centre the camera on the active island (used when switching islands in the World panel).
+func center_on_active_island() -> void:
+	var isl := Game.sim.active_island()
+	if isl == null or _cam == null:
+		return
+	_cam.position = Vector2(isl.width, isl.height) * TILE * 0.5
 
 ## Auto-place a demo settlement near the Kontor — also a placement smoke test on a
 ## real generated island.
