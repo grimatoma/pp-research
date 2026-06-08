@@ -250,7 +250,8 @@ static func _build_buildings() -> void:
 	_bld(_producer("well", "Well", "civic", Color("6fc8e0"), Vector2i(1, 1),
 		"water", 5.0, 60.0, {}, "", "", {"wood": 10}, "res://assets/art/buildings/well.png"))
 	_bld(_producer("tavern", "Tavern", "civic", Color("e09a4a"), Vector2i(2, 2),
-		"community", 5.0, 60.0, {}, "", "", {"wood": 20, "coin": 50}))
+		"community", 5.0, 60.0, {}, "", "", {"wood": 20, "coin": 50},
+		"res://assets/art/buildings/tavern.png"))
 	_bld(_producer("school", "School", "civic", Color("bb6bd9"), Vector2i(2, 2),
 		"education", 5.0, 120.0, {}, "colonists", "", {"plank": 100, "coin": 80}))
 	_bld(_producer("medicus", "Medicus", "civic", Color("e06a6a"), Vector2i(2, 2),
@@ -264,14 +265,16 @@ static func _build_buildings() -> void:
 		"wood", 1.0, 40.0, {}, "", "forest", {"wood": 5},
 		"res://assets/art/buildings/lumberjack.png"))
 	_bld(_producer("apple_orchard", "Apple Orchard", "raw", Color("c0563f"), Vector2i(2, 2),
-		"apple", 3.0, 720.0, {}, "", "grass", {"wood": 10}))
+		"apple", 3.0, 720.0, {}, "", "grass", {"wood": 10},
+		"res://assets/art/buildings/apple_orchard.png"))
 	_bld(_producer("wheat_farm", "Wheat Farm", "raw", Color("d9bb4a"), Vector2i(2, 2),
 		"wheat", 1.0, 120.0, {}, "colonists", "grass", {"wood": 10},
 		"res://assets/art/buildings/wheat_field.png"))
 	_bld(_producer("hop_farm", "Hop Farm", "raw", Color("8fae5d"), Vector2i(2, 2),
 		"hops", 1.0, 120.0, {}, "townsmen", "grass", {"wood": 10}))
 	_bld(_producer("piggery", "Piggery", "food", Color("e0a0a0"), Vector2i(2, 2),
-		"pig", 1.0, 120.0, {}, "", "grass", {"wood": 10}))
+		"pig", 1.0, 120.0, {}, "", "grass", {"wood": 10},
+		"res://assets/art/buildings/piggery.png"))
 	_bld(_producer("sheep_farm", "Sheep Farm", "raw", Color("d9c8a0"), Vector2i(2, 2),
 		"yarn", 1.0, 240.0, {}, "colonists", "grass", {"wood": 10}))
 	_bld(_producer("cattle_ranch", "Cattle Ranch", "raw", Color("a07850"), Vector2i(2, 2),
@@ -291,18 +294,23 @@ static func _build_buildings() -> void:
 
 	# ── processors (some need a straight river spot) ──────────────────────────
 	_bld(_producer("sawmill", "Sawmill", "production", Color("c19a6b"), Vector2i(2, 2),
-		"plank", 1.0, 30.0, {"wood": 1}, "", "river", {"wood": 10}))
+		"plank", 1.0, 30.0, {"wood": 1}, "", "river", {"wood": 10},
+		"res://assets/art/buildings/sawmill.png"))
 	_bld(_producer("cider_maker", "Cider Maker", "food", Color("e0a93a"), Vector2i(2, 2),
-		"cider", 1.0, 60.0, {"apple": 1}, "", "", {"wood": 15}))
+		"cider", 1.0, 60.0, {"apple": 1}, "", "", {"wood": 15},
+		"res://assets/art/buildings/cider_maker.png"))
 	_bld(_producer("sausage_maker", "Sausage Maker", "food", Color("c4564a"), Vector2i(2, 2),
-		"sausage", 1.0, 120.0, {"pig": 1}, "", "", {"wood": 15}))
+		"sausage", 1.0, 120.0, {"pig": 1}, "", "", {"wood": 15},
+		"res://assets/art/buildings/sausage_maker.png"))
 	_bld(_producer("flour_mill", "Flour Mill", "production", Color("efe7c8"), Vector2i(2, 2),
 		"flour", 1.0, 120.0, {"wheat": 2}, "colonists", "river", {"wood": 20},
 		"res://assets/art/buildings/windmill.png"))
 	_bld(_producer("bakery", "Bakery", "food", Color("d9a85a"), Vector2i(2, 2),
-		"bread", 1.0, 240.0, {"flour": 1}, "colonists", "", {"wood": 20}))
+		"bread", 1.0, 240.0, {"flour": 1}, "colonists", "", {"wood": 20},
+		"res://assets/art/buildings/bakery.png"))
 	_bld(_producer("weaver", "Weaver", "production", Color("9a6fb0"), Vector2i(2, 2),
-		"fabric", 1.0, 240.0, {"yarn": 2}, "colonists", "", {"wood": 20}))
+		"fabric", 1.0, 240.0, {"yarn": 2}, "colonists", "", {"wood": 20},
+		"res://assets/art/buildings/weaver.png"))
 	_bld(_producer("potashery", "Potashery", "production", Color("b8b0a0"), Vector2i(2, 2),
 		"potash", 1.0, 120.0, {"wood": 2}, "colonists", "", {"wood": 20}))
 	_bld(_producer("tallow_maker", "Tallow Maker", "production", Color("efe0a8"), Vector2i(2, 2),
