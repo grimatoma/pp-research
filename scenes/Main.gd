@@ -105,6 +105,31 @@ func _run_capture() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png("res://docs/prestige.png")
 	print("CAPTURE_PRESTIGE_OK")
+	# Sixth shot: a settled TROPICAL colony with plantations — proves the multi-region
+	# world (distinct region tint + climate-gated plantation art + a coastal Kontor).
+	_hud.call("close_panels")
+	Game.sim.unlocked_regions = ["temperate", "tropical"]
+	Game.sim.unlocked_tiers = ["pioneers", "colonists", "townsmen", "merchants"]
+	var trop := MapGen.generate(28, 28, 4242, "tropical", 0, "")
+	trop.island_name = "Palmyra"
+	trop.settled = true
+	trop.stockpile = {"wood": 400.0}
+	Game.sim.islands.append(trop)
+	Game.sim._place_starting_kontor(trop)
+	Game.sim.active_index = Game.sim.islands.size() - 1
+	for id in ["coffee_plantation", "sugar_plantation", "cacao_plantation",
+			"tobacco_plantation", "pioneer_hut", "pioneer_hut", "well"]:
+		var def := Database.building(id)
+		var spot := _find_spot(def)
+		if spot != Vector2i(-9999, -9999):
+			Game.sim.try_place(def, spot)
+	_island_view._rebake()
+	_frame_whole_island()
+	_cam.zoom = Vector2(0.85, 0.85)
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/tropical.png")
+	print("CAPTURE_TROPICAL_OK")
 	get_tree().quit()
 
 func _frame_whole_island() -> void:
