@@ -68,7 +68,7 @@
   <p class="small">A demo settlement on a seeded island — autotiled coastline, production buildings clustered in range of the coastal Kontor, houses populated, settlers walking between them. Rendered in-engine.</p>
 
   <h2>What it IS — built &amp; validated</h2>
-  <p>A playable <strong>temperate-region vertical slice</strong> covering PP2 milestones M1–M5, gated by <strong>34 headless checks</strong> (<code>tests/run_economy_tests.gd</code>, exit 0/1).</p>
+  <p>A <strong>feature-complete vertical slice of the whole PP2 loop</strong> — all milestones M1–M10 — gated by <strong>154 headless checks</strong> across three suites (economy/world/prestige 113, combat 22, and a full end-to-end playthrough 19; all exit 0/1).</p>
   <div class="grid">
     <div class="card ok"><h3>Economy core <span class="pill ok">done</span></h3><ul class="small">
       <li><strong>The luxury cascade</strong> — each tier's luxuries are the next tier's basics, same good &amp; per-resident rate. Verbatim PP2 denominators; golden-asserted.</li>
@@ -84,6 +84,21 @@
       <li><strong>Deterministic tick</strong> — <code>advance(a)+advance(b) == advance(a+b)</code>; the remainder carries across calls.</li>
       <li><strong>Offline catch-up</strong> — bounded coarse-step replay of wall-clock time on load (no startup freeze).</li>
       <li><strong>Save/load</strong> — versioned JSON, discard-on-mismatch, mid-cycle accumulators preserved.</li>
+    </ul></div>
+    <div class="card ok"><h3>Military &amp; conquest <span class="pill ok">done</span></h3><ul class="small">
+      <li><strong>Recruitment</strong> — Pioneer houses muster Militia; weapon smiths + training grounds trade militia &amp; weapons up the unit ladder.</li>
+      <li><strong>Orc forts</strong> block buildable land; <strong>expeditions</strong> resolve over wall-clock via the deterministic resolver (strike phases, Ranged/Flank/Splash/Trample/Bulletproof/Spiky + boss Armageddon/Lightning/Revive/Summon/Confusion).</li>
+      <li>Clearing a warchief grants a Cartography point.</li>
+    </ul></div>
+    <div class="card ok"><h3>Multi-island world <span class="pill ok">done</span></h3><ul class="small">
+      <li><strong>Cartography discovery</strong> charts procedural islands across climate regions (temperate/tropical/northern, research-gated).</li>
+      <li>Conquer, then <strong>settle</strong>, hand to the Paragons for <strong>Favor</strong>, or turn in for Coin.</li>
+      <li><strong>Trade routes</strong> ship goods (never people) between islands — region-crossing needs a crossing hull — so Merchant cities import tropical coffee/sugar.</li>
+    </ul></div>
+    <div class="card ok"><h3>Prestige roguelite <span class="pill ok">done</span></h3><ul class="small">
+      <li>Grow ~30 Paragons, found a <strong>Palace</strong>, complete its 5 Favor-fuelled stages for a permanent <strong>Reputation</strong> point.</li>
+      <li>Reputation (saved to a meta file surviving restarts) unlocks <strong>Custodians</strong> — run-modifiers picked at <strong>New Game+</strong>.</li>
+      <li><strong>Creativity research</strong> (M9): per-tier perk trees + an endless Infinite tree.</li>
     </ul></div>
   </div>
 
@@ -126,18 +141,21 @@
       <tr><td>M3</td><td>Population, the luxury cascade, emigration, payout-at-100%</td><td><span class="pill ok">done</span></td></tr>
       <tr><td>M4–M5</td><td>Production chains at scale, Coin economy &amp; Kontor</td><td><span class="pill ok">done</span></td></tr>
       <tr><td>M9</td><td>Creativity research — population-generated perks (economy modifiers + Infinite tree), full HUD panel</td><td><span class="pill ok">done</span></td></tr>
-      <tr><td>M8</td><td>Auto-resolved Orc combat — deterministic 3-phase resolver + unit catalog <em>done</em>; expedition flow, map camps &amp; recruitment next</td><td><span class="pill warn">core done</span></td></tr>
-      <tr><td>M6–M7</td><td>Ships, trade routes, regions; Cartography island discovery</td><td><span class="pill idle">specced</span></td></tr>
-      <tr><td>M10</td><td>Palace → Reputation → Custodian prestige loop</td><td><span class="pill idle">specced</span></td></tr>
+      <tr><td>M8</td><td>Auto-resolved Orc combat — recruitment, training, map forts, expeditions over wall-clock, warchief→Cartography; full ability resolver</td><td><span class="pill ok">done</span></td></tr>
+      <tr><td>M6–M7</td><td>Ships, trade routes, climate regions; Cartography island discovery, settle/handover/turn-in</td><td><span class="pill ok">done</span></td></tr>
+      <tr><td>M10</td><td>Palace → Reputation → Custodian prestige loop, New Game+ meta-progression</td><td><span class="pill ok">done</span></td></tr>
+      <tr><td>future</td><td>Rural Farmers→Workers population line, Northern extraction chains, the 12 Challenges, DLC magic track, per-region tilesets</td><td><span class="pill idle">backlog</span></td></tr>
     </tbody>
   </table>
   <p class="small">Full system teardown and the data behind every number: <a href="pp2-spec-extract.json">pp2-spec-extract.json</a>. Contributor guide: the repo <code>CLAUDE.md</code> and <code>README.md</code>.</p>
 
   <h2>Run it</h2>
-  <pre>godot --path . --import                                              # register class_names (first run)
-godot --path .                                                       # play
-godot --headless --path . --script res://tests/run_economy_tests.gd  # 34 checks, exit 0/1
-godot --path . -- --capture                                          # demo settlement → docs/screenshot.png</pre>
+  <pre>godot --path . --import                                                # register class_names (first run)
+godot --path .                                                         # play
+godot --headless --path . --script res://tests/run_economy_tests.gd    # 113 economy/world/prestige checks
+godot --headless --path . --script res://tests/run_combat_tests.gd     # 22 combat-resolver checks
+godot --headless --path . --script res://tests/run_playthrough_test.gd # 19 full end-to-end checks
+godot --path . -- --capture                                            # demo + panels → docs/*.png</pre>
 </div>
 </body>
 </html>
