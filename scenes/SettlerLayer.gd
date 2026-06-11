@@ -10,6 +10,11 @@ const ARRIVE := 5.0
 const MAX_SETTLERS := 12
 const FRAME_FPS := 8.0
 const WALK_DIR := ["south", "east", "north", "west"]
+## The walk frames are 48px tall with the figure's feet at y≈40, head at y≈6. We anchor
+## by the feet (not the frame centre) so a settler's ground-contact point is its actual
+## position — otherwise the body sits 16px too low and reads as "sunk into the ground".
+const FRAME_PX := 48
+const FOOT := Vector2(FRAME_PX * 0.5, 40)
 
 var _frames: SpriteFrames
 var _settlers: Array = []   ## [{spr: AnimatedSprite2D, target: Vector2}]
@@ -53,7 +58,9 @@ func _spawn_settler(isl: Island) -> void:
 	var spr := AnimatedSprite2D.new()
 	spr.sprite_frames = _frames
 	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	spr.centered = true
+	# Foot-anchor: place the sprite so its feet (FOOT) land on `position`.
+	spr.centered = false
+	spr.offset = -FOOT
 	var start := _random_building_pos(isl)
 	spr.position = start
 	add_child(spr)
@@ -82,7 +89,7 @@ func _pick_target(isl: Island, _from: Vector2) -> Vector2:
 		for pb in isl.buildings:
 			var def := Database.building(pb.building_id)
 			if def != null and def.is_storage:
-				return _bld_center(def, pb)
+				return _bld_stand_spot(def, pb)
 	return _random_building_pos(isl)
 
 func _random_building_pos(isl: Island) -> Vector2:
@@ -93,7 +100,10 @@ func _random_building_pos(isl: Island) -> Vector2:
 	if connected.is_empty():
 		return Vector2(isl.width, isl.height) * TILE * 0.5
 	var pb = connected[randi() % connected.size()]
-	return _bld_center(Database.building(pb.building_id), pb)
+	return _bld_stand_spot(Database.building(pb.building_id), pb)
 
-func _bld_center(def: BuildingDef, pb: PlacedBuilding) -> Vector2:
-	return (Vector2(pb.origin) + Vector2(def.size) * 0.5) * TILE
+## A standing spot just in front of (south of) the building's footprint, horizontally
+## centred — so settlers gather at the "door" rather than overlapping the building art.
+func _bld_stand_spot(def: BuildingDef, pb: PlacedBuilding) -> Vector2:
+	var origin := Vector2(pb.origin)
+	return Vector2(origin.x + def.size.x * 0.5, origin.y + def.size.y + 0.3) * TILE
