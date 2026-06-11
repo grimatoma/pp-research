@@ -113,3 +113,7 @@ See `docs/pp2-spec-extract.json`.
 - Keep balance numbers sourced from `docs/pp2-spec-extract.json`; mark any invented value
   `CHOSEN DEFAULT` with a comment.
 - Static typing throughout; doc-comment public funcs with `##` (house style).
+- **When a task is complete, commit and merge to `main` by default** — no need to ask.
+  Stage only the files relevant to the change (e.g. exclude `docs/*.png` that the
+  `--capture` harness incidentally regenerated), write a descriptive message, and push to
+  `origin main`.
